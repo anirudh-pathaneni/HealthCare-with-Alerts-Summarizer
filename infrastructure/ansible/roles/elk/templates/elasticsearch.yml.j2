@@ -1,0 +1,7 @@
+cluster.name: "healthcare-cluster"
+node.name: "{{ ansible_hostname }}"
+network.host: 0.0.0.0
+discovery.type: single-node
+xpack.security.enabled: false
+http.cors.enabled: true
+http.cors.allow-origin: "*"

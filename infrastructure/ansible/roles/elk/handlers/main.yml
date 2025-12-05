@@ -1,0 +1,16 @@
+---
+# ELK handlers
+- name: restart elasticsearch
+  systemd:
+    name: elasticsearch
+    state: restarted
+
+- name: restart kibana
+  systemd:
+    name: kibana
+    state: restarted
+
+- name: restart logstash
+  systemd:
+    name: logstash
+    state: restarted

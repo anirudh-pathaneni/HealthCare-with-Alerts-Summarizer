@@ -1,0 +1,98 @@
+---
+# Kubernetes Role - Main tasks
+- name: Disable swap
+  command: swapoff -a
+  when: ansible_swaptotal_mb > 0
+
+- name: Remove swap from fstab
+  lineinfile:
+    path: /etc/fstab
+    regexp: '^.*swap.*$'
+    state: absent
+
+- name: Install required packages
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+
+- name: Add Kubernetes GPG key
+  apt_key:
+    url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+    state: present
+
+- name: Add Kubernetes repository
+  apt_repository:
+    repo: "deb https://apt.kubernetes.io/ kubernetes-xenial main"
+    state: present
+
+- name: Install containerd
+  apt:
+    name: containerd
+    state: present
+  notify: restart containerd
+
+- name: Configure containerd
+  shell: |
+    containerd config default > /etc/containerd/config.toml
+    sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+  notify: restart containerd
+
+- name: Install Kubernetes components
+  apt:
+    name:
+      - "kubelet={{ kubernetes_version }}-00"
+      - "kubeadm={{ kubernetes_version }}-00"
+      - "kubectl={{ kubernetes_version }}-00"
+    state: present
+
+- name: Hold kubernetes packages
+  dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubelet
+    - kubeadm
+    - kubectl
+
+- name: Enable kubelet
+  systemd:
+    name: kubelet
+    enabled: yes
+    state: started
+
+- name: Initialize Kubernetes master
+  command: kubeadm init --pod-network-cidr=10.244.0.0/16
+  when: "'kubernetes_masters' in group_names"
+  register: kubeadm_init
+  ignore_errors: yes
+
+- name: Setup kubeconfig for ubuntu user
+  block:
+    - name: Create .kube directory
+      file:
+        path: /home/ubuntu/.kube
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Copy admin.conf
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /home/ubuntu/.kube/config
+        remote_src: yes
+        owner: ubuntu
+        group: ubuntu
+        mode: '0600'
+  when: "'kubernetes_masters' in group_names"
+
+- name: Install Flannel CNI
+  command: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+  become_user: ubuntu
+  when: "'kubernetes_masters' in group_names"
+  environment:
+    KUBECONFIG: /home/ubuntu/.kube/config

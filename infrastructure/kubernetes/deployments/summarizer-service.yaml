@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: summarizer-service
+  namespace: healthcare
+  labels:
+    app: summarizer-service
+    component: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: summarizer-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: summarizer-service
+        component: backend
+    spec:
+      containers:
+        - name: summarizer-service
+          image: healthcare-aiops/summarizer-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8003
+              protocol: TCP
+          env:
+            - name: ELASTICSEARCH_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: healthcare-config
+                  key: ELASTICSEARCH_URL
+            - name: ELASTICSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: healthcare-secrets
+                  key: ELASTICSEARCH_PASSWORD
+                  optional: true
+            - name: MODEL_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: healthcare-config
+                  key: MODEL_NAME
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "2Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 120
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 60
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: summarizer-service
+  namespace: healthcare
+  labels:
+    app: summarizer-service
+spec:
+  selector:
+    app: summarizer-service
+  ports:
+    - port: 8003
+      targetPort: 8003
+      protocol: TCP
+  type: ClusterIP

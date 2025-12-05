@@ -1,0 +1,41 @@
+---
+# Backend Role - Deploy healthcare services to Kubernetes
+- name: Create healthcare namespace
+  command: kubectl apply -f {{ playbook_dir }}/../../../kubernetes/namespace.yaml
+  environment:
+    KUBECONFIG: /home/ubuntu/.kube/config
+
+- name: Apply ConfigMaps
+  command: kubectl apply -f {{ playbook_dir }}/../../../kubernetes/configmaps/
+  environment:
+    KUBECONFIG: /home/ubuntu/.kube/config
+
+- name: Apply Secrets
+  command: kubectl apply -f {{ playbook_dir }}/../../../kubernetes/secrets/
+  environment:
+    KUBECONFIG: /home/ubuntu/.kube/config
+
+- name: Deploy backend services
+  command: kubectl apply -f {{ playbook_dir }}/../../../kubernetes/deployments/
+  environment:
+    KUBECONFIG: /home/ubuntu/.kube/config
+
+- name: Apply Ingress
+  command: kubectl apply -f {{ playbook_dir }}/../../../kubernetes/ingress/
+  environment:
+    KUBECONFIG: /home/ubuntu/.kube/config
+
+- name: Apply HPA
+  command: kubectl apply -f {{ playbook_dir }}/../../../kubernetes/hpa/
+  environment:
+    KUBECONFIG: /home/ubuntu/.kube/config
+
+- name: Wait for deployments to be ready
+  command: kubectl rollout status deployment/{{ item }} -n healthcare --timeout=300s
+  environment:
+    KUBECONFIG: /home/ubuntu/.kube/config
+  loop:
+    - vitals-generator
+    - alert-engine
+    - summarizer-service
+    - frontend

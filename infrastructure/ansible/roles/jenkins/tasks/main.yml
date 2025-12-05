@@ -1,0 +1,54 @@
+---
+# Jenkins Role - Main tasks
+- name: Install Java
+  apt:
+    name: openjdk-17-jdk
+    state: present
+
+- name: Add Jenkins GPG key
+  apt_key:
+    url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+    state: present
+
+- name: Add Jenkins repository
+  apt_repository:
+    repo: "deb https://pkg.jenkins.io/debian-stable binary/"
+    state: present
+
+- name: Install Jenkins
+  apt:
+    name: jenkins
+    state: present
+  notify: restart jenkins
+
+- name: Install Docker for Jenkins
+  apt:
+    name: docker.io
+    state: present
+
+- name: Add Jenkins user to docker group
+  user:
+    name: jenkins
+    groups: docker
+    append: yes
+  notify: restart jenkins
+
+- name: Install kubectl
+  get_url:
+    url: "https://dl.k8s.io/release/v{{ kubernetes_version | default('1.28.4') }}/bin/linux/amd64/kubectl"
+    dest: /usr/local/bin/kubectl
+    mode: '0755'
+
+- name: Create Jenkins jobs directory
+  file:
+    path: /var/lib/jenkins/jobs
+    state: directory
+    owner: jenkins
+    group: jenkins
+    mode: '0755'
+
+- name: Enable and start Jenkins
+  systemd:
+    name: jenkins
+    enabled: yes
+    state: started

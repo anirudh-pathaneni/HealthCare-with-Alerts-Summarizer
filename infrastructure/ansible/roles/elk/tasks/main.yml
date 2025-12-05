@@ -1,0 +1,96 @@
+---
+# ELK Role - Main tasks
+- name: Install Java
+  apt:
+    name: openjdk-17-jdk
+    state: present
+
+- name: Add Elastic GPG key
+  apt_key:
+    url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+    state: present
+
+- name: Add Elastic repository
+  apt_repository:
+    repo: "deb https://artifacts.elastic.co/packages/8.x/apt stable main"
+    state: present
+
+- name: Install Elasticsearch
+  apt:
+    name: "elasticsearch={{ elasticsearch_version }}"
+    state: present
+  notify: restart elasticsearch
+
+- name: Configure Elasticsearch
+  template:
+    src: elasticsearch.yml.j2
+    dest: /etc/elasticsearch/elasticsearch.yml
+    owner: root
+    group: elasticsearch
+    mode: '0660'
+  notify: restart elasticsearch
+
+- name: Install Kibana
+  apt:
+    name: "kibana={{ kibana_version }}"
+    state: present
+  notify: restart kibana
+
+- name: Configure Kibana
+  template:
+    src: kibana.yml.j2
+    dest: /etc/kibana/kibana.yml
+    owner: root
+    group: kibana
+    mode: '0660'
+  notify: restart kibana
+
+- name: Install Logstash
+  apt:
+    name: "logstash={{ logstash_version }}"
+    state: present
+  notify: restart logstash
+
+- name: Create Logstash pipeline directory
+  file:
+    path: /etc/logstash/conf.d
+    state: directory
+    owner: root
+    group: logstash
+    mode: '0755'
+
+- name: Copy medical pipeline
+  copy:
+    src: medical.conf
+    dest: /etc/logstash/conf.d/medical.conf
+    owner: root
+    group: logstash
+    mode: '0644'
+  notify: restart logstash
+
+- name: Copy system pipeline
+  copy:
+    src: system.conf
+    dest: /etc/logstash/conf.d/system.conf
+    owner: root
+    group: logstash
+    mode: '0644'
+  notify: restart logstash
+
+- name: Enable and start Elasticsearch
+  systemd:
+    name: elasticsearch
+    enabled: yes
+    state: started
+
+- name: Enable and start Kibana
+  systemd:
+    name: kibana
+    enabled: yes
+    state: started
+
+- name: Enable and start Logstash
+  systemd:
+    name: logstash
+    enabled: yes
+    state: started

@@ -1,0 +1,14 @@
+---
+# ELK Stack installation playbook
+- name: Install and Configure ELK Stack
+  hosts: elk
+  become: yes
+  gather_facts: yes
+
+  vars:
+    elasticsearch_version: "8.11.1"
+    kibana_version: "8.11.1"
+    logstash_version: "8.11.1"
+
+  roles:
+    - role: elk

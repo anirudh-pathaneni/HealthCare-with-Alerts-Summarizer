@@ -1,0 +1,12 @@
+---
+# Kubernetes cluster setup playbook
+- name: Setup Kubernetes Cluster
+  hosts: kubernetes_masters:kubernetes_workers
+  become: yes
+  gather_facts: yes
+
+  vars:
+    kubernetes_version: "1.28.4"
+
+  roles:
+    - role: kubernetes

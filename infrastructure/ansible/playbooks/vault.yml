@@ -1,0 +1,12 @@
+---
+# Vault installation playbook
+- name: Install and Configure HashiCorp Vault
+  hosts: vault
+  become: yes
+  gather_facts: yes
+
+  vars:
+    vault_version: "1.15.4"
+
+  roles:
+    - role: vault
