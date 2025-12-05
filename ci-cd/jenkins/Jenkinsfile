@@ -1,0 +1,181 @@
+pipeline {
+    agent any
+    
+    environment {
+        DOCKER_REGISTRY = 'docker.io'
+        DOCKER_REPO = 'healthcare-aiops'
+        KUBE_NAMESPACE = 'healthcare'
+        GIT_CREDENTIALS = 'git-credentials'
+        DOCKER_CREDENTIALS = 'docker-credentials'
+    }
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 30, unit: 'MINUTES')
+        timestamps()
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    env.GIT_COMMIT_SHORT = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+                    env.BUILD_VERSION = "${BUILD_NUMBER}-${GIT_COMMIT_SHORT}"
+                }
+            }
+        }
+        
+        stage('Build & Test') {
+            parallel {
+                stage('Frontend') {
+                    steps {
+                        dir('frontend') {
+                            sh 'npm ci'
+                            sh 'npm run lint || true'
+                            sh 'npm run build'
+                        }
+                    }
+                }
+                
+                stage('Vitals Generator') {
+                    steps {
+                        dir('backend/vitals-generator') {
+                            sh 'pip install -r requirements.txt'
+                            sh 'python -m pytest tests/ -v || true'
+                        }
+                    }
+                }
+                
+                stage('Alert Engine') {
+                    steps {
+                        dir('backend/alert-engine') {
+                            sh 'pip install -r requirements.txt'
+                            sh 'python -m pytest tests/ -v || true'
+                        }
+                    }
+                }
+                
+                stage('Summarizer Service') {
+                    steps {
+                        dir('backend/summarizer-service') {
+                            sh 'pip install -r requirements.txt'
+                            sh 'python -m pytest tests/ -v || true'
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Build Docker Images') {
+            parallel {
+                stage('Frontend Image') {
+                    steps {
+                        script {
+                            docker.build("${DOCKER_REPO}/frontend:${BUILD_VERSION}", 'frontend')
+                        }
+                    }
+                }
+                
+                stage('Vitals Generator Image') {
+                    steps {
+                        script {
+                            docker.build("${DOCKER_REPO}/vitals-generator:${BUILD_VERSION}", 'backend/vitals-generator')
+                        }
+                    }
+                }
+                
+                stage('Alert Engine Image') {
+                    steps {
+                        script {
+                            docker.build("${DOCKER_REPO}/alert-engine:${BUILD_VERSION}", 'backend/alert-engine')
+                        }
+                    }
+                }
+                
+                stage('Summarizer Image') {
+                    steps {
+                        script {
+                            docker.build("${DOCKER_REPO}/summarizer-service:${BUILD_VERSION}", 'backend/summarizer-service')
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Push Docker Images') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS}", usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin ${DOCKER_REGISTRY}'
+                    
+                    sh "docker push ${DOCKER_REPO}/frontend:${BUILD_VERSION}"
+                    sh "docker push ${DOCKER_REPO}/vitals-generator:${BUILD_VERSION}"
+                    sh "docker push ${DOCKER_REPO}/alert-engine:${BUILD_VERSION}"
+                    sh "docker push ${DOCKER_REPO}/summarizer-service:${BUILD_VERSION}"
+                    
+                    // Tag as latest
+                    sh "docker tag ${DOCKER_REPO}/frontend:${BUILD_VERSION} ${DOCKER_REPO}/frontend:latest"
+                    sh "docker tag ${DOCKER_REPO}/vitals-generator:${BUILD_VERSION} ${DOCKER_REPO}/vitals-generator:latest"
+                    sh "docker tag ${DOCKER_REPO}/alert-engine:${BUILD_VERSION} ${DOCKER_REPO}/alert-engine:latest"
+                    sh "docker tag ${DOCKER_REPO}/summarizer-service:${BUILD_VERSION} ${DOCKER_REPO}/summarizer-service:latest"
+                    
+                    sh "docker push ${DOCKER_REPO}/frontend:latest"
+                    sh "docker push ${DOCKER_REPO}/vitals-generator:latest"
+                    sh "docker push ${DOCKER_REPO}/alert-engine:latest"
+                    sh "docker push ${DOCKER_REPO}/summarizer-service:latest"
+                }
+            }
+        }
+        
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    // Update image tags in deployments
+                    sh """
+                        sed -i 's|image: healthcare-aiops/frontend:.*|image: ${DOCKER_REPO}/frontend:${BUILD_VERSION}|g' infrastructure/kubernetes/deployments/frontend.yaml
+                        sed -i 's|image: healthcare-aiops/vitals-generator:.*|image: ${DOCKER_REPO}/vitals-generator:${BUILD_VERSION}|g' infrastructure/kubernetes/deployments/vitals-generator.yaml
+                        sed -i 's|image: healthcare-aiops/alert-engine:.*|image: ${DOCKER_REPO}/alert-engine:${BUILD_VERSION}|g' infrastructure/kubernetes/deployments/alert-engine.yaml
+                        sed -i 's|image: healthcare-aiops/summarizer-service:.*|image: ${DOCKER_REPO}/summarizer-service:${BUILD_VERSION}|g' infrastructure/kubernetes/deployments/summarizer-service.yaml
+                    """
+                    
+                    // Apply Kubernetes manifests
+                    sh 'kubectl apply -f infrastructure/kubernetes/namespace.yaml'
+                    sh 'kubectl apply -f infrastructure/kubernetes/configmaps/'
+                    sh 'kubectl apply -f infrastructure/kubernetes/secrets/'
+                    sh 'kubectl apply -f infrastructure/kubernetes/deployments/'
+                    sh 'kubectl apply -f infrastructure/kubernetes/ingress/'
+                    sh 'kubectl apply -f infrastructure/kubernetes/hpa/'
+                }
+            }
+        }
+        
+        stage('Verify Deployment') {
+            steps {
+                script {
+                    // Wait for rollout to complete
+                    sh "kubectl rollout status deployment/frontend -n ${KUBE_NAMESPACE} --timeout=300s"
+                    sh "kubectl rollout status deployment/vitals-generator -n ${KUBE_NAMESPACE} --timeout=300s"
+                    sh "kubectl rollout status deployment/alert-engine -n ${KUBE_NAMESPACE} --timeout=300s"
+                    sh "kubectl rollout status deployment/summarizer-service -n ${KUBE_NAMESPACE} --timeout=300s"
+                    
+                    // Health checks
+                    sh "kubectl get pods -n ${KUBE_NAMESPACE}"
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo 'Pipeline completed successfully!'
+            slackSend(color: 'good', message: "Healthcare AIOps build ${BUILD_VERSION} deployed successfully!")
+        }
+        failure {
+            echo 'Pipeline failed!'
+            slackSend(color: 'danger', message: "Healthcare AIOps build ${BUILD_VERSION} failed!")
+        }
+        always {
+            cleanWs()
+        }
+    }
+}

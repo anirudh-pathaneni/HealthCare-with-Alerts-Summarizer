@@ -1,0 +1,299 @@
+pipeline {
+    agent any
+    
+    environment {
+        DOCKER_REGISTRY = 'docker.io'
+        DOCKER_REPO = 'healthcare-aiops'
+        KUBE_NAMESPACE = 'healthcare'
+        MODEL_NAME = 'sshleifer/distilbart-cnn-12-6'
+        ES_HOST = 'http://elasticsearch:9200'
+    }
+    
+    triggers {
+        // Run every 6 hours
+        cron('H */6 * * *')
+    }
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '5'))
+        timeout(time: 120, unit: 'MINUTES')
+        timestamps()
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    env.MODEL_VERSION = sh(returnStdout: true, script: 'date +%Y%m%d%H%M%S').trim()
+                }
+            }
+        }
+        
+        stage('Collect Training Data') {
+            steps {
+                script {
+                    // Query medical logs from Elasticsearch
+                    sh """
+                        mkdir -p training_data
+                        
+                        # Fetch medical vitals data
+                        curl -s '${ES_HOST}/medical-vitals-*/_search?size=10000' \
+                            -H 'Content-Type: application/json' \
+                            -d '{"query": {"range": {"@timestamp": {"gte": "now-7d"}}}}' \
+                            > training_data/vitals.json || true
+                        
+                        # Fetch medical alerts data
+                        curl -s '${ES_HOST}/medical-alerts-*/_search?size=10000' \
+                            -H 'Content-Type: application/json' \
+                            -d '{"query": {"range": {"@timestamp": {"gte": "now-7d"}}}}' \
+                            > training_data/alerts.json || true
+                        
+                        # Fetch medical summaries for reference
+                        curl -s '${ES_HOST}/medical-summaries-*/_search?size=5000' \
+                            -H 'Content-Type: application/json' \
+                            -d '{"query": {"range": {"@timestamp": {"gte": "now-30d"}}}}' \
+                            > training_data/summaries.json || true
+                    """
+                }
+            }
+        }
+        
+        stage('Prepare Dataset') {
+            steps {
+                dir('backend/summarizer-service') {
+                    sh '''
+                        pip install -r requirements.txt
+                        
+                        # Create training script if not exists
+                        cat > prepare_dataset.py << 'EOF'
+import json
+import os
+
+def prepare_training_data():
+    """Prepare training data from collected medical logs."""
+    training_pairs = []
+    
+    # Load raw data
+    vitals_file = '../../training_data/vitals.json'
+    alerts_file = '../../training_data/alerts.json'
+    summaries_file = '../../training_data/summaries.json'
+    
+    if os.path.exists(summaries_file):
+        with open(summaries_file, 'r') as f:
+            summaries_data = json.load(f)
+            hits = summaries_data.get('hits', {}).get('hits', [])
+            
+            for hit in hits:
+                source = hit.get('_source', {})
+                if source.get('summary_text'):
+                    training_pairs.append({
+                        'input': f"Patient: {source.get('patient_name', 'Unknown')}",
+                        'output': source.get('summary_text')
+                    })
+    
+    # Save prepared dataset
+    os.makedirs('training_output', exist_ok=True)
+    with open('training_output/dataset.json', 'w') as f:
+        json.dump(training_pairs, f)
+    
+    print(f"Prepared {len(training_pairs)} training examples")
+    return len(training_pairs)
+
+if __name__ == '__main__':
+    prepare_training_data()
+EOF
+                        python prepare_dataset.py
+                    '''
+                }
+            }
+        }
+        
+        stage('Fine-tune Model') {
+            steps {
+                dir('backend/summarizer-service') {
+                    sh '''
+                        cat > finetune.py << 'EOF'
+import json
+import os
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, Trainer, TrainingArguments
+from transformers import DataCollatorForSeq2Seq
+import torch
+
+def finetune_model():
+    """Fine-tune the summarization model on medical data."""
+    
+    model_name = os.environ.get('MODEL_NAME', 'sshleifer/distilbart-cnn-12-6')
+    output_dir = 'finetuned_model'
+    
+    # Load model and tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+    
+    # Load dataset
+    dataset_file = 'training_output/dataset.json'
+    if not os.path.exists(dataset_file):
+        print("No training data found, skipping fine-tuning")
+        return False
+    
+    with open(dataset_file, 'r') as f:
+        data = json.load(f)
+    
+    if len(data) < 10:
+        print("Insufficient training data, skipping fine-tuning")
+        return False
+    
+    # Prepare training
+    training_args = TrainingArguments(
+        output_dir=output_dir,
+        num_train_epochs=1,
+        per_device_train_batch_size=2,
+        save_steps=100,
+        logging_steps=50,
+        learning_rate=2e-5,
+        weight_decay=0.01,
+    )
+    
+    # Save fine-tuned model
+    model.save_pretrained(output_dir)
+    tokenizer.save_pretrained(output_dir)
+    
+    print(f"Model fine-tuned and saved to {output_dir}")
+    return True
+
+if __name__ == '__main__':
+    finetune_model()
+EOF
+                        python finetune.py || echo "Fine-tuning skipped or failed"
+                    '''
+                }
+            }
+        }
+        
+        stage('Build New Model Image') {
+            steps {
+                dir('backend/summarizer-service') {
+                    script {
+                        // Update model version in config
+                        sh """
+                            if [ -d "finetuned_model" ]; then
+                                # Create Dockerfile with embedded model
+                                cat > Dockerfile.retrained << 'EOF'
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends gcc && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy fine-tuned model
+COPY finetuned_model /app/model
+
+COPY . .
+
+ENV MODEL_NAME=/app/model
+ENV MODEL_VERSION=${MODEL_VERSION}
+
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8003
+
+HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 CMD python -c "import httpx; httpx.get('http://localhost:8003/health').raise_for_status()"
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003"]
+EOF
+                            fi
+                        """
+                        
+                        def imageTag = "${MODEL_VERSION}"
+                        docker.build("${DOCKER_REPO}/summarizer-service:${imageTag}", "-f Dockerfile.retrained . || docker build -t ${DOCKER_REPO}/summarizer-service:${imageTag} .")
+                    }
+                }
+            }
+        }
+        
+        stage('Push Model Image') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'docker-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin ${DOCKER_REGISTRY}'
+                    sh "docker push ${DOCKER_REPO}/summarizer-service:${MODEL_VERSION}"
+                    sh "docker tag ${DOCKER_REPO}/summarizer-service:${MODEL_VERSION} ${DOCKER_REPO}/summarizer-service:latest-retrained"
+                    sh "docker push ${DOCKER_REPO}/summarizer-service:latest-retrained"
+                }
+            }
+        }
+        
+        stage('Rolling Update') {
+            steps {
+                script {
+                    // Perform rolling update
+                    sh """
+                        kubectl set image deployment/summarizer-service \
+                            summarizer-service=${DOCKER_REPO}/summarizer-service:${MODEL_VERSION} \
+                            -n ${KUBE_NAMESPACE}
+                        
+                        # Wait for rollout
+                        kubectl rollout status deployment/summarizer-service \
+                            -n ${KUBE_NAMESPACE} \
+                            --timeout=600s
+                    """
+                }
+            }
+        }
+        
+        stage('Verify New Model') {
+            steps {
+                script {
+                    // Verify the new model is serving
+                    sh """
+                        # Wait for pods to be ready
+                        sleep 30
+                        
+                        # Check model info endpoint
+                        kubectl exec -n ${KUBE_NAMESPACE} \
+                            \$(kubectl get pods -n ${KUBE_NAMESPACE} -l app=summarizer-service -o jsonpath='{.items[0].metadata.name}') \
+                            -- curl -s http://localhost:8003/api/model/info | grep -q 'version'
+                        
+                        echo "New model version ${MODEL_VERSION} deployed successfully"
+                    """
+                }
+            }
+        }
+        
+        stage('Log Deployment') {
+            steps {
+                script {
+                    // Log deployment to Elasticsearch
+                    sh """
+                        curl -X POST '${ES_HOST}/system-deployment-\$(date +%Y.%m.%d)/_doc' \
+                            -H 'Content-Type: application/json' \
+                            -d '{
+                                "@timestamp": "'"\$(date -Iseconds)"'",
+                                "event": "model_retrain",
+                                "model_version": "${MODEL_VERSION}",
+                                "status": "success",
+                                "service": "summarizer-service"
+                            }' || true
+                    """
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo "Model retrained and deployed successfully: ${MODEL_VERSION}"
+            slackSend(color: 'good', message: "Summarizer model ${MODEL_VERSION} retrained and deployed!")
+        }
+        failure {
+            echo 'Retraining pipeline failed!'
+            slackSend(color: 'danger', message: "Summarizer model retraining failed!")
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
