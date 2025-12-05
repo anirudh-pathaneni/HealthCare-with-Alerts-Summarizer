@@ -1,0 +1,65 @@
+.vitals-chart {
+    padding: var(--space-lg);
+    height: 100%;
+}
+
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-md);
+}
+
+.chart-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.chart-current {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.current-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.current-unit {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.chart-container {
+    height: 180px;
+}
+
+.chart-tooltip {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: var(--space-sm) var(--space-md);
+    box-shadow: 0 4px 12px var(--shadow-color);
+}
+
+.tooltip-time {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.tooltip-value {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.tooltip-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}

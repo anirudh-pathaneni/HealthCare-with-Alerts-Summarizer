@@ -1,0 +1,181 @@
+.patient-card {
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-lg);
+    transition: all var(--transition-normal);
+    cursor: pointer;
+    animation: fadeIn 0.5s ease-out;
+}
+
+.patient-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(102, 126, 234, 0.2);
+    border-color: rgba(102, 126, 234, 0.3);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: var(--space-lg);
+}
+
+.patient-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.patient-avatar {
+    width: 48px;
+    height: 48px;
+    background: var(--primary-gradient);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: white;
+}
+
+.patient-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.patient-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.patient-meta {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.severity-badge {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-xl);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.severity-dot {
+    width: 6px;
+    height: 6px;
+    background: currentColor;
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+}
+
+.vitals-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+}
+
+.vital-item {
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-md);
+    background: var(--bg-glass);
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
+}
+
+.vital-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.vital-icon {
+    width: 28px;
+    height: 28px;
+    margin-bottom: var(--space-sm);
+    opacity: 0.8;
+}
+
+.vital-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+.vital-icon.heart-rate {
+    color: #f45c43;
+}
+
+.vital-icon.spo2 {
+    color: #38ef7d;
+}
+
+.vital-icon.blood-pressure {
+    color: #667eea;
+}
+
+.vital-icon.temperature {
+    color: #f5af19;
+}
+
+.vital-data {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    margin-bottom: 2px;
+}
+
+.vital-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+}
+
+.vital-unit {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.vital-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border-color);
+}
+
+.admission-date {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.view-details {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: 0.85rem;
+    color: var(--accent-blue);
+    font-weight: 500;
+    transition: all var(--transition-fast);
+}
+
+.view-details svg {
+    width: 16px;
+    height: 16px;
+    transition: transform var(--transition-fast);
+}
+
+.patient-card:hover .view-details svg {
+    transform: translateX(4px);
+}

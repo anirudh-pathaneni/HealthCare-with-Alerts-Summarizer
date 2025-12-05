@@ -1,0 +1,116 @@
+.summary-card {
+    padding: var(--space-lg);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.summary-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-lg);
+}
+
+.summary-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.summary-title svg {
+    width: 20px;
+    height: 20px;
+    color: var(--accent-purple);
+}
+
+.ai-badge {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: var(--space-xs) var(--space-sm);
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(118, 75, 162, 0.2) 100%);
+    border: 1px solid rgba(118, 75, 162, 0.3);
+    border-radius: var(--radius-xl);
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--accent-purple);
+}
+
+.ai-icon {
+    font-size: 0.8rem;
+}
+
+.summary-content {
+    flex: 1;
+    margin-bottom: var(--space-lg);
+}
+
+.summary-text {
+    font-size: 0.95rem;
+    line-height: 1.7;
+    color: var(--text-secondary);
+}
+
+.no-summary {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-muted);
+    gap: var(--space-md);
+}
+
+.no-summary svg {
+    width: 40px;
+    height: 40px;
+    animation: pulse 2s infinite;
+}
+
+.no-summary p {
+    font-size: 0.9rem;
+}
+
+.summary-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border-color);
+}
+
+.summary-time {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.summary-time svg {
+    width: 14px;
+    height: 14px;
+}
+
+.model-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.model-name {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.model-version {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    background: var(--bg-glass);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+}
