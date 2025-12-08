@@ -34,7 +34,7 @@ async def vitals_update_task():
             es_client.bulk_log_vitals(patient_dicts)
         except Exception as e:
             logger.error(f"Error updating vitals: {e}")
-        
+
         await asyncio.sleep(settings.vitals_interval_ms / 1000)
 
 
@@ -42,19 +42,19 @@ async def vitals_update_task():
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info(f"Starting {settings.service_name} v{settings.service_version}")
-    
+
     # Start background vitals update task
     task = asyncio.create_task(vitals_update_task())
-    
+
     yield
-    
+
     # Cleanup
     task.cancel()
     try:
         await task
     except asyncio.CancelledError:
         pass
-    
+
     logger.info("Shutting down vitals generator")
 
 
@@ -114,6 +114,51 @@ async def health_check():
     }
 
 
+# ==================== AUTH ENDPOINTS ====================
+from app.auth import LoginRequest, TokenResponse, authenticate_user, create_access_token, verify_token
+
+
+@app.post("/api/auth/login")
+async def login(request: LoginRequest):
+    """Authenticate user and return JWT token."""
+    user = authenticate_user(request.username, request.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    token = create_access_token({"sub": user["username"], "role": user["role"]})
+    logger.info(f"User logged in: {user['username']}")
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": user
+    }
+
+
+@app.post("/api/auth/logout")
+async def logout():
+    """Logout endpoint (client should discard token)."""
+    return {"message": "Logged out successfully"}
+
+
+@app.get("/api/auth/verify")
+async def verify_auth(token: str = Query(...)):
+    """Verify JWT token."""
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    return {
+        "valid": True,
+        "user": {
+            "username": payload.get("sub"),
+            "role": payload.get("role")
+        }
+    }
+
+
+# ==================== PATIENT ENDPOINTS ====================
+
 @app.get("/api/patients", response_model=None)
 async def get_patients() -> List[dict]:
     """Get all patients with current vitals."""
@@ -152,7 +197,7 @@ async def get_vitals_history(patient_id: str, hours: int = Query(default=1, ge=1
     history = vitals_generator.get_patient_vitals_history(patient_id, hours)
     if not history:
         raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
-    
+
     return {
         "heartRate": [{"timestamp": v.timestamp, "value": v.heart_rate} for v in history],
         "spO2": [{"timestamp": v.timestamp, "value": v.spo2} for v in history],
@@ -170,16 +215,16 @@ async def websocket_vitals(websocket: WebSocket, patient_id: str):
     if not patient:
         await websocket.close(code=4004, reason="Patient not found")
         return
-    
+
     await websocket.accept()
-    
+
     # Add to active connections
     if patient_id not in active_connections:
         active_connections[patient_id] = []
     active_connections[patient_id].append(websocket)
-    
+
     logger.info(f"WebSocket connected for patient {patient_id}")
-    
+
     try:
         while True:
             # Update and send vitals
@@ -196,9 +241,9 @@ async def websocket_vitals(websocket: WebSocket, patient_id: str):
                     "timestamp": patient.vitals.timestamp
                 }
                 await websocket.send_json(vitals_data)
-            
+
             await asyncio.sleep(1)
-            
+
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for patient {patient_id}")
     except Exception as e:

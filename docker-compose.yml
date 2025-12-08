@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Elasticsearch
   elasticsearch:
@@ -83,17 +81,20 @@ services:
     environment:
       - ELASTICSEARCH_URL=http://elasticsearch:9200
       - VITALS_SERVICE_URL=http://vitals-generator:8001
+      - MONGODB_URI=mongodb://mongodb:27017
+      - MONGODB_DATABASE=healthcare_aiops
       - DEBUG=false
     ports:
       - "8002:8002"
     depends_on:
       - vitals-generator
       - elasticsearch
+      - mongodb
     networks:
       - healthcare-network
     restart: unless-stopped
 
-  # Summarizer Service
+  # Summarizer Service (Template-based - no ML)
   summarizer-service:
     build:
       context: ./backend/summarizer-service
@@ -110,10 +111,6 @@ services:
     networks:
       - healthcare-network
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 4G
 
   # Frontend
   frontend:
@@ -131,8 +128,29 @@ services:
       - healthcare-network
     restart: unless-stopped
 
+  # MongoDB (for development - use MongoDB Atlas in production)
+  mongodb:
+    image: mongo:7.0
+    container_name: healthcare-mongodb
+    environment:
+      - MONGO_INITDB_DATABASE=healthcare_aiops
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    networks:
+      - healthcare-network
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  # Auth is now integrated into vitals-generator service
+
 volumes:
   elasticsearch-data:
+    driver: local
+  mongodb-data:
     driver: local
 
 networks:

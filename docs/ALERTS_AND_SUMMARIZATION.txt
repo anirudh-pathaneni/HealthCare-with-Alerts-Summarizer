@@ -1,0 +1,183 @@
+================================================================================
+          HEALTHCARE AIOPS MONITORING SYSTEM - ALERTS & SUMMARIZATION
+================================================================================
+
+OVERVIEW
+--------
+This document explains how the Clinical Alert Engine and AI Summarizer work
+together to monitor patient vitals and provide actionable clinical insights.
+
+
+================================================================================
+                          CLINICAL ALERT ENGINE
+================================================================================
+
+PURPOSE:
+The Alert Engine continuously monitors patient vital signs and generates
+real-time clinical alerts when values exceed established medical thresholds.
+
+MONITORED VITAL SIGNS:
+1. Heart Rate (HR)           - Beats per minute (bpm)
+2. Oxygen Saturation (SpO2)  - Percentage (%)
+3. Blood Pressure (BP)       - Systolic/Diastolic (mmHg)
+4. Body Temperature          - Degrees Celsius (°C)
+5. Respiratory Rate          - Breaths per minute
+
+ALERT SEVERITY LEVELS:
+- CRITICAL: Immediate medical attention required
+- WARNING:  Close monitoring needed
+- INFO:     Awareness notification
+- NORMAL:   No action required
+
+ALERT THRESHOLDS:
+--------------------------------------------------------------------------------
+| Vital Sign        | Normal Range   | Warning        | Critical              |
+--------------------------------------------------------------------------------
+| Heart Rate        | 60-100 bpm     | <50 or >100    | <40 or >130 bpm       |
+| SpO2              | 95-100%        | 92-94%         | <88%                  |
+| Systolic BP       | 90-120 mmHg    | >140 or <90    | >180 or <80 mmHg      |
+| Diastolic BP      | 60-80 mmHg     | >90 or <60     | >110 or <50 mmHg      |
+| Temperature       | 36.1-37.2°C    | >38.0°C        | >39.0°C or <35.0°C    |
+| Respiratory Rate  | 12-20/min      | >24 or <10     | >30 or <8/min         |
+--------------------------------------------------------------------------------
+
+ALERT TYPES DETECTED:
+1. TACHYCARDIA - Abnormally fast heart rate
+2. BRADYCARDIA - Abnormally slow heart rate
+3. HYPOXIA - Low blood oxygen levels
+4. HYPERTENSIVE CRISIS - Dangerously high blood pressure
+5. HYPOTENSION - Dangerously low blood pressure
+6. FEVER - Elevated body temperature
+7. HYPOTHERMIA - Dangerously low body temperature
+8. TACHYPNEA - Rapid breathing
+9. BRADYPNEA - Slow breathing
+10. SENSOR DISCONNECT - Equipment malfunction detected
+
+HOW ALERTS ARE GENERATED:
+1. Vitals Generator streams real-time patient data every 1 second
+2. Alert Engine polls vitals every 5 seconds
+3. Each vital is compared against threshold rules
+4. Alerts are created with unique ID, timestamp, and severity
+5. Alerts are logged to Elasticsearch (medical-alerts-* index)
+6. Frontend displays alerts in real-time via API polling
+
+
+================================================================================
+                          AI SUMMARIZATION SERVICE
+================================================================================
+
+PURPOSE:
+The Summarizer uses a DistilBART transformer model to generate natural language
+clinical summaries from patient vital signs and alert data.
+
+MODEL DETAILS:
+- Model: DistilBART (sshleifer/distilbart-cnn-12-6)
+- Type: Sequence-to-Sequence Transformer
+- Task: Abstractive Text Summarization
+- Input: Structured vital signs + alert data
+- Output: Natural language clinical summary
+
+DATA SOURCES (Read-Only from Medical Indices):
+- medical-vitals-*   : Patient vital sign readings
+- medical-alerts-*   : Clinical alerts generated
+- medical-summaries-*: Previously generated summaries (for context)
+
+SUMMARY GENERATION PROCESS:
+1. Query Elasticsearch for patient vitals (last 30 minutes)
+2. Query Elasticsearch for patient alerts (last 30 minutes)
+3. Format data into natural language input text
+4. Pass text through DistilBART model
+5. Generate concise clinical summary
+6. Store summary in medical-summaries-* index
+7. Display on patient details page
+
+EXAMPLE INPUT FORMAT:
+"Clinical data for John Smith: Current vitals: Heart rate 95 bpm,
+SpO2 91%, Blood pressure 155/95 mmHg, Temperature 38.5°C,
+Respiratory rate 22/min. Average over monitoring period: Heart rate 92 bpm,
+SpO2 93%. Warning alerts: Fever Alert, Elevated BP.
+Total alerts: 3 (0 critical, 3 warnings)."
+
+EXAMPLE OUTPUT SUMMARY:
+"Patient John Smith is exhibiting elevated vital signs requiring monitoring.
+Mild fever and hypertension detected with SpO2 trending below normal.
+Consider evaluation for possible infection."
+
+AUTO-RETRAINING PIPELINE:
+- Runs every 6 hours via Jenkins
+- Collects new data from medical indices
+- Fine-tunes model on latest clinical patterns
+- Performs zero-downtime rolling update
+
+
+================================================================================
+                              ELASTICSEARCH INDICES
+================================================================================
+
+DUAL INDEX ARCHITECTURE:
+
+Medical Indices (Patient Data):
+- medical-vitals-YYYY.MM.DD    : Vital sign readings
+- medical-alerts-YYYY.MM.DD    : Clinical alerts
+- medical-summaries-YYYY.MM.DD : AI-generated summaries
+- medical-events-YYYY.MM.DD    : General medical events
+
+System Indices (Infrastructure):
+- system-api-YYYY.MM.DD        : API request logs
+- system-k8s-YYYY.MM.DD        : Kubernetes events
+- system-deployment-YYYY.MM.DD : Deployment records
+
+NOTE: The AI Summarizer ONLY reads from medical-* indices to ensure
+patient data isolation and HIPAA compliance considerations.
+
+
+================================================================================
+                              TROUBLESHOOTING
+================================================================================
+
+COMMON WARNINGS/ERRORS:
+
+1. "OpenBLAS Warning: Detect OpenMP Loop"
+   - Cause: Threading library conflict in PyTorch/NumPy
+   - Impact: Minimal performance impact, not critical
+   - Fix: Set environment variable OMP_NUM_THREADS=1
+
+2. "WebSocket error: received 1001 (going away)"
+   - Cause: Normal client disconnection (browser tab closed, page refresh)
+   - Impact: None - expected behavior
+   - Fix: No action needed, connections auto-reconnect
+
+3. "Failed to connect to Elasticsearch"
+   - Cause: Elasticsearch service not ready yet
+   - Impact: Data not logged until connection established
+   - Fix: Wait for Elasticsearch health check to pass
+
+
+================================================================================
+                              API ENDPOINTS
+================================================================================
+
+VITALS GENERATOR (Port 8001):
+- GET  /health                          - Service health check
+- GET  /api/patients                    - List all patients
+- GET  /api/patients/{id}               - Get patient details
+- GET  /api/patients/{id}/vitals        - Get current vitals
+- GET  /api/patients/{id}/vitals/history - Get vitals history
+- WS   /ws/vitals/{id}                  - Real-time vitals stream
+
+ALERT ENGINE (Port 8002):
+- GET  /health                          - Service health check
+- GET  /api/alerts                      - List all alerts
+- GET  /api/alerts/{patient_id}         - Get patient alerts
+- POST /api/alerts/{id}/acknowledge     - Acknowledge alert
+- POST /api/analyze                     - Manual vitals analysis
+
+SUMMARIZER SERVICE (Port 8003):
+- GET  /health                          - Service health check
+- GET  /api/summaries                   - List all summaries
+- GET  /api/summaries/{patient_id}      - Get patient summary
+- GET  /api/model/info                  - Get model details
+- POST /api/model/trigger-summary       - Trigger manual summary
+
+
+================================================================================

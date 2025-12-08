@@ -24,6 +24,55 @@
     height: 18px;
 }
 
+.error-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    padding: var(--spacing-xl);
+}
+
+.error-card {
+    text-align: center;
+    padding: var(--spacing-2xl);
+    max-width: 400px;
+}
+
+.error-icon {
+    width: 64px;
+    height: 64px;
+    color: var(--status-critical);
+    margin-bottom: var(--spacing-md);
+}
+
+.error-card h2 {
+    margin-bottom: var(--spacing-sm);
+    color: var(--text-primary);
+}
+
+.error-card p {
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-lg);
+}
+
+.back-button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-sm) var(--spacing-lg);
+    background: linear-gradient(135deg, var(--primary-cyan), var(--primary-purple));
+    color: white;
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    font-weight: 500;
+    transition: all var(--transition-normal);
+}
+
+.back-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 20px rgba(6, 182, 212, 0.3);
+}
+
 .patient-header {
     padding: var(--space-xl);
     margin-bottom: var(--space-xl);

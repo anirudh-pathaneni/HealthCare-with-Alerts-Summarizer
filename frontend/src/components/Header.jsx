@@ -1,7 +1,16 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import './Header.css'
 
 function Header() {
+    const { user, logout, isAuthenticated } = useAuth()
+    const navigate = useNavigate()
+
+    const handleLogout = async () => {
+        await logout()
+        navigate('/login', { replace: true })
+    }
+
     return (
         <header className="header">
             <div className="container header-content">
@@ -35,10 +44,20 @@ function Header() {
                         </svg>
                         Dashboard
                     </Link>
-                    <div className="nav-status">
-                        <span className="status-dot"></span>
-                        <span className="status-text">System Online</span>
-                    </div>
+
+                    {isAuthenticated && (
+                        <div className="nav-user">
+                            <span className="user-name">{user?.username || 'Admin'}</span>
+                            <button className="logout-btn" onClick={handleLogout}>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                                    <polyline points="16 17 21 12 16 7" />
+                                    <line x1="21" y1="12" x2="9" y2="12" />
+                                </svg>
+                                Logout
+                            </button>
+                        </div>
+                    )}
                 </nav>
             </div>
         </header>

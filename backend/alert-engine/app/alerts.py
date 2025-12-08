@@ -1,7 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 from pydantic import BaseModel
 from enum import Enum
+import random
 
 from app.config import get_settings
 
@@ -44,20 +45,56 @@ class Alert(BaseModel):
 
 class AlertEngine:
     """Rule-based clinical alert detection engine."""
-    
+
     def __init__(self):
         self.active_alerts: Dict[str, List[Alert]] = {}
         self.alert_counter = 0
-    
+        # Seed initial alerts for each patient
+        self._seed_initial_alerts()
+
     def _generate_alert_id(self) -> str:
         """Generate unique alert ID."""
         self.alert_counter += 1
         return f"ALT-{datetime.now().strftime('%Y%m%d')}-{self.alert_counter:05d}"
-    
+
+    def _seed_initial_alerts(self):
+        """Create 5 random seed alerts per patient on startup."""
+        patient_ids = [f"P{str(i).zfill(3)}" for i in range(1, 11)]  # P001-P010
+
+        alert_templates = [
+            (AlertType.TACHYCARDIA.value, "Elevated heart rate detected: {value} bpm", "heart_rate", AlertSeverity.WARNING.value, 75, 130),
+            (AlertType.HYPOXIA.value, "Low oxygen saturation: {value}%", "spo2", AlertSeverity.WARNING.value, 88, 94),
+            (AlertType.HYPERTENSIVE_CRISIS.value, "Elevated blood pressure: {value}/90 mmHg", "blood_pressure", AlertSeverity.WARNING.value, 140, 175),
+            (AlertType.FEVER.value, "Elevated temperature: {value}°C", "temperature", AlertSeverity.WARNING.value, 38.0, 39.5),
+            (AlertType.TACHYPNEA.value, "Elevated respiratory rate: {value}/min", "respiratory_rate", AlertSeverity.WARNING.value, 24, 28),
+            (AlertType.BRADYCARDIA.value, "Low heart rate detected: {value} bpm", "heart_rate", AlertSeverity.CRITICAL.value, 42, 55),
+        ]
+
+        for patient_id in patient_ids:
+            self.active_alerts[patient_id] = []
+            # Create 5 random alerts for each patient
+            for i in range(5):
+                template = random.choice(alert_templates)
+                value = round(random.uniform(template[4], template[5]), 1)
+                timestamp = (datetime.now() - timedelta(minutes=random.randint(1, 30))).isoformat()
+
+                alert = Alert(
+                    id=self._generate_alert_id(),
+                    patient_id=patient_id,
+                    type=template[0],
+                    message=template[1].format(value=value),
+                    severity=template[3],
+                    vital_type=template[2],
+                    vital_value=value,
+                    threshold=template[4],
+                    timestamp=timestamp
+                )
+                self.active_alerts[patient_id].append(alert)
+
     def analyze_vitals(self, patient_id: str, vitals: dict) -> List[Alert]:
         """Analyze patient vitals and generate alerts."""
         alerts = []
-        
+
         # Extract vitals (handle both camelCase and snake_case)
         heart_rate = vitals.get("heartRate") or vitals.get("heart_rate", 0)
         spo2 = vitals.get("spO2") or vitals.get("spo2", 100)
@@ -66,9 +103,9 @@ class AlertEngine:
         diastolic = bp.get("diastolic", 80)
         temperature = vitals.get("temperature", 37.0)
         respiratory = vitals.get("respiratory") or vitals.get("respiratory_rate", 16)
-        
+
         timestamp = datetime.now().isoformat()
-        
+
         # Heart Rate Alerts
         if heart_rate >= settings.hr_high_critical:
             alerts.append(Alert(
@@ -94,7 +131,7 @@ class AlertEngine:
                 threshold=settings.hr_high_warning,
                 timestamp=timestamp
             ))
-        
+
         if heart_rate <= settings.hr_low_critical and heart_rate > 0:
             alerts.append(Alert(
                 id=self._generate_alert_id(),
@@ -119,7 +156,7 @@ class AlertEngine:
                 threshold=settings.hr_low_warning,
                 timestamp=timestamp
             ))
-        
+
         # SpO2 Alerts
         if spo2 <= settings.spo2_critical:
             alerts.append(Alert(
@@ -145,7 +182,7 @@ class AlertEngine:
                 threshold=settings.spo2_warning,
                 timestamp=timestamp
             ))
-        
+
         # Blood Pressure Alerts
         if systolic >= settings.bp_systolic_critical:
             alerts.append(Alert(
@@ -171,7 +208,7 @@ class AlertEngine:
                 threshold=settings.bp_systolic_warning,
                 timestamp=timestamp
             ))
-        
+
         if systolic <= settings.bp_systolic_low_critical and systolic > 0:
             alerts.append(Alert(
                 id=self._generate_alert_id(),
@@ -184,7 +221,7 @@ class AlertEngine:
                 threshold=settings.bp_systolic_low_critical,
                 timestamp=timestamp
             ))
-        
+
         # Temperature Alerts
         if temperature >= settings.temp_critical:
             alerts.append(Alert(
@@ -210,7 +247,7 @@ class AlertEngine:
                 threshold=settings.temp_warning,
                 timestamp=timestamp
             ))
-        
+
         if temperature <= settings.temp_low_critical and temperature > 0:
             alerts.append(Alert(
                 id=self._generate_alert_id(),
@@ -223,7 +260,7 @@ class AlertEngine:
                 threshold=settings.temp_low_critical,
                 timestamp=timestamp
             ))
-        
+
         # Respiratory Rate Alerts
         if respiratory >= settings.resp_high_critical:
             alerts.append(Alert(
@@ -249,7 +286,7 @@ class AlertEngine:
                 threshold=settings.resp_high_warning,
                 timestamp=timestamp
             ))
-        
+
         if respiratory <= settings.resp_low_critical and respiratory > 0:
             alerts.append(Alert(
                 id=self._generate_alert_id(),
@@ -262,7 +299,7 @@ class AlertEngine:
                 threshold=settings.resp_low_critical,
                 timestamp=timestamp
             ))
-        
+
         # Sensor disconnection (missing or zero values)
         if heart_rate == 0 or spo2 == 0:
             alerts.append(Alert(
@@ -276,24 +313,29 @@ class AlertEngine:
                 threshold=0,
                 timestamp=timestamp
             ))
-        
-        # Store active alerts
+
+        # Store active alerts - ACCUMULATE instead of replace
         if alerts:
-            self.active_alerts[patient_id] = alerts
-        
+            if patient_id not in self.active_alerts:
+                self.active_alerts[patient_id] = []
+            # Add new alerts to the beginning
+            self.active_alerts[patient_id] = alerts + self.active_alerts[patient_id]
+            # Keep only the most recent 50 alerts per patient
+            self.active_alerts[patient_id] = self.active_alerts[patient_id][:50]
+
         return alerts
-    
+
     def get_patient_alerts(self, patient_id: str) -> List[Alert]:
         """Get alerts for a specific patient."""
         return self.active_alerts.get(patient_id, [])
-    
+
     def get_all_alerts(self) -> List[Alert]:
         """Get all active alerts."""
         all_alerts = []
         for alerts in self.active_alerts.values():
             all_alerts.extend(alerts)
         return sorted(all_alerts, key=lambda x: x.timestamp, reverse=True)
-    
+
     def acknowledge_alert(self, alert_id: str) -> bool:
         """Acknowledge an alert."""
         for patient_alerts in self.active_alerts.values():
@@ -302,7 +344,7 @@ class AlertEngine:
                     alert.acknowledged = True
                     return True
         return False
-    
+
     def clear_patient_alerts(self, patient_id: str):
         """Clear all alerts for a patient."""
         if patient_id in self.active_alerts:

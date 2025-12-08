@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import VitalsChart from '../components/VitalsChart'
 import AlertPanel from '../components/AlertPanel'
@@ -7,86 +7,11 @@ import {
     getPatientById,
     getPatientVitalsHistory,
     getPatientAlerts,
-    getPatientSummary,
+    triggerSummary,
     getModelInfo,
     createVitalsWebSocket
 } from '../services/api'
 import './PatientDetails.css'
-
-// Mock data
-const mockPatient = {
-    id: 'P003',
-    name: 'Michael Brown',
-    bedNumber: 'ICU-103',
-    age: 72,
-    gender: 'Male',
-    admissionDate: '2024-11-25',
-    diagnosis: 'Acute Respiratory Distress Syndrome (ARDS)',
-    attendingPhysician: 'Dr. James Wilson',
-    vitals: {
-        heartRate: 54,
-        spO2: 88,
-        bloodPressure: { systolic: 185, diastolic: 105 },
-        temperature: 38.4,
-        respiratory: 24
-    },
-    alertSeverity: 'critical'
-}
-
-const mockAlerts = [
-    {
-        id: 1,
-        type: 'Hypoxia Alert',
-        message: 'SpO2 dropped below 90% threshold. Current reading: 88%',
-        severity: 'critical',
-        timestamp: new Date(Date.now() - 300000).toISOString()
-    },
-    {
-        id: 2,
-        type: 'Hypertensive Crisis',
-        message: 'Systolic BP exceeds 180 mmHg. Current: 185/105 mmHg',
-        severity: 'critical',
-        timestamp: new Date(Date.now() - 600000).toISOString()
-    },
-    {
-        id: 3,
-        type: 'Fever Alert',
-        message: 'Temperature above 38.0°C threshold. Current: 38.4°C',
-        severity: 'warning',
-        timestamp: new Date(Date.now() - 1200000).toISOString()
-    },
-    {
-        id: 4,
-        type: 'Bradycardia Alert',
-        message: 'Heart rate below 60 bpm. Current reading: 54 bpm',
-        severity: 'warning',
-        timestamp: new Date(Date.now() - 1800000).toISOString()
-    }
-]
-
-const mockSummary = {
-    text: "Patient Michael Brown, 72-year-old male, currently experiencing acute respiratory distress with concerning vital signs. SpO2 levels have dropped to 88%, indicating significant hypoxia requiring immediate attention. Blood pressure remains critically elevated at 185/105 mmHg, suggesting hypertensive crisis. Temperature elevated at 38.4°C. Heart rate shows bradycardia at 54 bpm. Patient requires close monitoring and immediate clinical intervention. Current treatment protocol includes supplemental oxygen therapy and antihypertensive medications. Recommend continuous cardiac monitoring and respiratory support assessment.",
-    timestamp: new Date(Date.now() - 120000).toISOString()
-}
-
-const mockModelInfo = {
-    name: 'DistilBART-Medical',
-    version: '1.2.3',
-    lastUpdated: '2024-12-01',
-    accuracy: 0.94
-}
-
-function generateMockVitalsHistory(type, baseValue, variance) {
-    const now = Date.now()
-    const data = []
-    for (let i = 60; i >= 0; i--) {
-        data.push({
-            timestamp: new Date(now - i * 60000).toISOString(),
-            value: baseValue + (Math.random() - 0.5) * variance
-        })
-    }
-    return data
-}
 
 function PatientDetails() {
     const { id } = useParams()
@@ -96,83 +21,160 @@ function PatientDetails() {
     const [summary, setSummary] = useState(null)
     const [modelInfo, setModelInfo] = useState(null)
     const [loading, setLoading] = useState(true)
+    const [error, setError] = useState(null)
+    const [summarizing, setSummarizing] = useState(false)
 
+    // Initial load - only once
     useEffect(() => {
-        const fetchData = async () => {
+        const loadPatient = async () => {
             try {
                 setLoading(true)
+                setError(null)
 
-                const [patientData, alertsData, summaryData, modelData] = await Promise.all([
-                    getPatientById(id),
-                    getPatientAlerts(id),
-                    getPatientSummary(id),
-                    getModelInfo()
-                ])
-
+                const patientData = await getPatientById(id)
                 setPatient(patientData)
-                setAlerts(alertsData)
-                setSummary(summaryData)
-                setModelInfo(modelData)
 
-                // Fetch vitals history
+                // Load vitals history
                 const history = await getPatientVitalsHistory(id)
                 setVitalsHistory(history)
+
+                // Load model info
+                const modelData = await getModelInfo().catch(() => null)
+                setModelInfo(modelData)
+
             } catch (err) {
-                console.warn('Using mock data:', err.message)
-                setPatient({ ...mockPatient, id })
-                setAlerts(mockAlerts)
-                setSummary(mockSummary)
-                setModelInfo(mockModelInfo)
-                setVitalsHistory({
-                    heartRate: generateMockVitalsHistory('heartRate', 54, 20),
-                    spO2: generateMockVitalsHistory('spO2', 88, 8),
-                    systolic: generateMockVitalsHistory('systolic', 185, 30),
-                    diastolic: generateMockVitalsHistory('diastolic', 105, 15),
-                    temperature: generateMockVitalsHistory('temperature', 38.4, 1),
-                    respiratory: generateMockVitalsHistory('respiratory', 24, 6)
-                })
+                console.error('Error loading patient:', err.message)
+                setError(`Failed to load patient: ${err.message}`)
             } finally {
                 setLoading(false)
             }
         }
 
-        fetchData()
+        loadPatient()
+    }, [id])
 
-        // Set up WebSocket for real-time updates
+    // Fetch alerts every 10 seconds
+    useEffect(() => {
+        const fetchAlerts = async () => {
+            try {
+                const alertsData = await getPatientAlerts(id)
+                setAlerts(alertsData || [])
+            } catch (err) {
+                console.error('Error fetching alerts:', err.message)
+            }
+        }
+
+        // Initial fetch
+        fetchAlerts()
+
+        // Set up polling every 10 seconds
+        const alertsInterval = setInterval(fetchAlerts, 10000)
+
+        return () => clearInterval(alertsInterval)
+    }, [id])
+
+    // WebSocket for real-time vitals updates
+    useEffect(() => {
         let ws
         try {
             ws = createVitalsWebSocket(id, (data) => {
+                // Update current patient vitals
+                setPatient(prev => prev ? {
+                    ...prev,
+                    vitals: {
+                        heartRate: data.heartRate || prev.vitals?.heartRate,
+                        spO2: data.spO2 || prev.vitals?.spO2,
+                        bloodPressure: data.bloodPressure || prev.vitals?.bloodPressure,
+                        temperature: data.temperature || prev.vitals?.temperature,
+                        respiratory: data.respiratory || prev.vitals?.respiratory
+                    }
+                } : prev)
+
+                // Update charts
                 setVitalsHistory(prev => {
                     const updated = { ...prev }
-                    Object.keys(data).forEach(key => {
-                        if (updated[key]) {
-                            updated[key] = [...updated[key].slice(1), {
-                                timestamp: new Date().toISOString(),
-                                value: data[key]
-                            }]
-                        }
-                    })
+                    const now = new Date().toISOString()
+
+                    if (data.heartRate && updated.heartRate) {
+                        updated.heartRate = [...updated.heartRate.slice(1), { timestamp: now, value: data.heartRate }]
+                    }
+                    if (data.spO2 && updated.spO2) {
+                        updated.spO2 = [...updated.spO2.slice(1), { timestamp: now, value: data.spO2 }]
+                    }
+                    if (data.bloodPressure?.systolic && updated.systolic) {
+                        updated.systolic = [...updated.systolic.slice(1), { timestamp: now, value: data.bloodPressure.systolic }]
+                    }
+                    if (data.bloodPressure?.diastolic && updated.diastolic) {
+                        updated.diastolic = [...updated.diastolic.slice(1), { timestamp: now, value: data.bloodPressure.diastolic }]
+                    }
+                    if (data.temperature && updated.temperature) {
+                        updated.temperature = [...updated.temperature.slice(1), { timestamp: now, value: data.temperature }]
+                    }
+                    if (data.respiratory && updated.respiratory) {
+                        updated.respiratory = [...updated.respiratory.slice(1), { timestamp: now, value: data.respiratory }]
+                    }
+
                     return updated
                 })
             })
         } catch (e) {
-            console.log('WebSocket not available, using polling')
+            console.log('WebSocket not available')
         }
 
-        // Refresh every 10 seconds
-        const interval = setInterval(fetchData, 10000)
-
         return () => {
-            clearInterval(interval)
             if (ws) ws.close()
         }
     }, [id])
 
-    if (loading || !patient) {
+    // Button-triggered summary generation
+    const handleGenerateSummary = useCallback(async () => {
+        setSummarizing(true)
+        try {
+            // Summarize last 10 alerts (or all if less)
+            const result = await triggerSummary(id)
+            // API returns: { patient_id, patient_name, text, vitals_count, alerts_count, ... }
+            const summaryText = typeof result === 'string' ? result : (result.text || result.summary || 'Summary generated successfully.')
+            setSummary({
+                text: summaryText,
+                timestamp: result.timestamp || new Date().toISOString(),
+                alertsCount: result.alerts_count || Math.min(alerts.length, 5)
+            })
+        } catch (err) {
+            console.error('Failed to generate summary:', err.message)
+            setSummary({
+                text: 'Failed to generate summary. Please try again.',
+                timestamp: new Date().toISOString(),
+                error: true
+            })
+        } finally {
+            setSummarizing(false)
+        }
+    }, [id, alerts.length])
+
+    if (loading) {
         return (
             <div className="loading-container">
                 <div className="loading-spinner"></div>
                 <p>Loading patient data...</p>
+            </div>
+        )
+    }
+
+    if (error || !patient) {
+        return (
+            <div className="error-container">
+                <div className="error-card glass-card">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="error-icon">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    <h2>Unable to Load Patient</h2>
+                    <p>{error || 'Patient not found'}</p>
+                    <Link to="/" className="back-button">
+                        Back to Dashboard
+                    </Link>
+                </div>
             </div>
         )
     }
@@ -231,27 +233,31 @@ function PatientDetails() {
                 <div className="current-vitals-bar">
                     <div className="vital-pill heart-rate">
                         <span className="pill-label">HR</span>
-                        <span className="pill-value">{patient.vitals.heartRate}</span>
+                        <span className="pill-value">{patient.vitals?.heartRate || '--'}</span>
                         <span className="pill-unit">bpm</span>
                     </div>
                     <div className="vital-pill spo2">
                         <span className="pill-label">SpO₂</span>
-                        <span className="pill-value">{patient.vitals.spO2}</span>
+                        <span className="pill-value">{patient.vitals?.spO2 || '--'}</span>
                         <span className="pill-unit">%</span>
                     </div>
                     <div className="vital-pill blood-pressure">
                         <span className="pill-label">BP</span>
-                        <span className="pill-value">{patient.vitals.bloodPressure.systolic}/{patient.vitals.bloodPressure.diastolic}</span>
+                        <span className="pill-value">
+                            {patient.vitals?.bloodPressure
+                                ? `${patient.vitals.bloodPressure.systolic}/${patient.vitals.bloodPressure.diastolic}`
+                                : '--/--'}
+                        </span>
                         <span className="pill-unit">mmHg</span>
                     </div>
                     <div className="vital-pill temperature">
                         <span className="pill-label">Temp</span>
-                        <span className="pill-value">{patient.vitals.temperature}</span>
+                        <span className="pill-value">{patient.vitals?.temperature || '--'}</span>
                         <span className="pill-unit">°C</span>
                     </div>
                     <div className="vital-pill respiratory">
                         <span className="pill-label">Resp</span>
-                        <span className="pill-value">{patient.vitals.respiratory}</span>
+                        <span className="pill-value">{patient.vitals?.respiratory || '--'}</span>
                         <span className="pill-unit">/min</span>
                     </div>
                 </div>
@@ -266,60 +272,24 @@ function PatientDetails() {
                         Vital Signs Trends
                     </h2>
                     <div className="charts-grid">
-                        <VitalsChart
-                            data={vitalsHistory.heartRate || []}
-                            type="heartRate"
-                            title="Heart Rate"
-                            unit="bpm"
-                            color="#f45c43"
-                            gradientId="hrGradient"
-                        />
-                        <VitalsChart
-                            data={vitalsHistory.spO2 || []}
-                            type="spO2"
-                            title="Oxygen Saturation"
-                            unit="%"
-                            color="#38ef7d"
-                            gradientId="spo2Gradient"
-                        />
-                        <VitalsChart
-                            data={vitalsHistory.systolic || []}
-                            type="systolic"
-                            title="Systolic BP"
-                            unit="mmHg"
-                            color="#667eea"
-                            gradientId="systolicGradient"
-                        />
-                        <VitalsChart
-                            data={vitalsHistory.temperature || []}
-                            type="temperature"
-                            title="Temperature"
-                            unit="°C"
-                            color="#f5af19"
-                            gradientId="tempGradient"
-                        />
-                        <VitalsChart
-                            data={vitalsHistory.respiratory || []}
-                            type="respiratory"
-                            title="Respiratory Rate"
-                            unit="/min"
-                            color="#00c6ff"
-                            gradientId="respGradient"
-                        />
-                        <VitalsChart
-                            data={vitalsHistory.diastolic || []}
-                            type="diastolic"
-                            title="Diastolic BP"
-                            unit="mmHg"
-                            color="#764ba2"
-                            gradientId="diastolicGradient"
-                        />
+                        <VitalsChart data={vitalsHistory.heartRate || []} type="heartRate" title="Heart Rate" unit="bpm" color="#f45c43" gradientId="hrGradient" />
+                        <VitalsChart data={vitalsHistory.spO2 || []} type="spO2" title="Oxygen Saturation" unit="%" color="#38ef7d" gradientId="spo2Gradient" />
+                        <VitalsChart data={vitalsHistory.systolic || []} type="systolic" title="Systolic BP" unit="mmHg" color="#667eea" gradientId="systolicGradient" />
+                        <VitalsChart data={vitalsHistory.temperature || []} type="temperature" title="Temperature" unit="°C" color="#f5af19" gradientId="tempGradient" />
+                        <VitalsChart data={vitalsHistory.respiratory || []} type="respiratory" title="Respiratory Rate" unit="/min" color="#00c6ff" gradientId="respGradient" />
+                        <VitalsChart data={vitalsHistory.diastolic || []} type="diastolic" title="Diastolic BP" unit="mmHg" color="#764ba2" gradientId="diastolicGradient" />
                     </div>
                 </div>
 
                 <div className="side-panels">
                     <AlertPanel alerts={alerts} />
-                    <SummaryCard summary={summary} modelInfo={modelInfo} />
+                    <SummaryCard
+                        summary={summary}
+                        modelInfo={modelInfo}
+                        onGenerateSummary={handleGenerateSummary}
+                        isGenerating={summarizing}
+                        alertsCount={alerts.length}
+                    />
                 </div>
             </div>
         </div>

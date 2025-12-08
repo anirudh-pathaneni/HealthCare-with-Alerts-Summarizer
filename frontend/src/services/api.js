@@ -3,6 +3,7 @@ import axios from 'axios'
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001'
 const ALERTS_API_URL = import.meta.env.VITE_ALERTS_API_URL || 'http://localhost:8002'
 const SUMMARIZER_API_URL = import.meta.env.VITE_SUMMARIZER_API_URL || 'http://localhost:8003'
+const AUTH_API_URL = import.meta.env.VITE_AUTH_API_URL || 'http://localhost:8004'
 
 const vitalsApi = axios.create({
     baseURL: API_BASE_URL,
@@ -22,7 +23,7 @@ const alertsApi = axios.create({
 
 const summarizerApi = axios.create({
     baseURL: SUMMARIZER_API_URL,
-    timeout: 30000,
+    timeout: 120000,  // 2 minutes for model inference
     headers: {
         'Content-Type': 'application/json'
     }
@@ -117,5 +118,25 @@ export const healthCheck = async () => {
     } catch (error) {
         console.error('Health check failed:', error)
         return { vitals: false, alerts: false, summarizer: false }
+    }
+}
+
+// Auth API - now uses vitals-generator service (same as API_BASE_URL)
+export const authApi = {
+    login: async (username, password) => {
+        const response = await vitalsApi.post('/api/auth/login', { username, password })
+        return response.data
+    },
+
+    logout: async () => {
+        const response = await vitalsApi.post('/api/auth/logout')
+        return response.data
+    },
+
+    verify: async (token) => {
+        const response = await vitalsApi.get('/api/auth/verify', {
+            params: { token }
+        })
+        return response.data
     }
 }

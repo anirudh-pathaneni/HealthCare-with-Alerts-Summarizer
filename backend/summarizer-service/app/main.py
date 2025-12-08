@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # Mock patient data for fallback
 MOCK_PATIENTS = {
     "P001": "John Smith",
-    "P002": "Sarah Johnson", 
+    "P002": "Sarah Johnson",
     "P003": "Michael Brown",
     "P004": "Emily Davis",
     "P005": "Robert Wilson",
@@ -42,28 +42,28 @@ async def generate_summaries_task():
     while True:
         try:
             logger.info("Starting summary generation cycle")
-            
+
             # Get all patients
             patients = es_client.get_all_patients()
-            
+
             if not patients:
                 # Use mock patients if Elasticsearch is not available
                 patients = list(MOCK_PATIENTS.keys())
-            
+
             for patient_id in patients:
                 try:
                     # Get patient data from Elasticsearch
                     vitals = es_client.get_patient_vitals(patient_id, settings.vitals_lookback_minutes)
                     alerts = es_client.get_patient_alerts(patient_id, settings.vitals_lookback_minutes)
-                    
+
                     # Get patient name
                     patient_name = MOCK_PATIENTS.get(patient_id, f"Patient {patient_id}")
                     if vitals and vitals[0].get("patient_name"):
                         patient_name = vitals[0].get("patient_name")
-                    
+
                     # Generate summary
                     summary = summarizer.generate_summary(patient_id, patient_name, vitals, alerts)
-                    
+
                     # Save to Elasticsearch
                     es_client.save_summary(
                         patient_id=patient_id,
@@ -73,15 +73,15 @@ async def generate_summaries_task():
                         alerts_count=summary["alerts_count"],
                         processing_time_ms=summary["processing_time_ms"]
                     )
-                    
+
                 except Exception as e:
                     logger.error(f"Error generating summary for patient {patient_id}: {e}")
-            
+
             logger.info(f"Completed summary generation for {len(patients)} patients")
-            
+
         except Exception as e:
             logger.error(f"Error in summary generation task: {e}")
-        
+
         await asyncio.sleep(settings.summary_interval_seconds)
 
 
@@ -89,19 +89,10 @@ async def generate_summaries_task():
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     logger.info(f"Starting {settings.service_name} v{settings.service_version}")
-    
-    # Start background summary generation task
-    task = asyncio.create_task(generate_summaries_task())
-    
+
+    # No background tasks - summaries are generated on-demand only
     yield
-    
-    # Cleanup
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-    
+
     logger.info("Shutting down summarizer service")
 
 
@@ -145,7 +136,7 @@ async def health_check():
 async def get_all_summaries():
     """Get all generated summaries."""
     summaries = summarizer.get_all_summaries()
-    
+
     # Also try to get from Elasticsearch
     if not summaries:
         for patient_id, patient_name in MOCK_PATIENTS.items():
@@ -158,7 +149,7 @@ async def get_all_summaries():
                     "model_name": cached.get("model_name"),
                     "model_version": cached.get("model_version")
                 })
-    
+
     return summaries
 
 
@@ -167,10 +158,10 @@ async def get_patient_summary(patient_id: str):
     """Get summary for a specific patient."""
     # Check cache first
     summary = summarizer.get_summary(patient_id)
-    
+
     if summary:
         return summary
-    
+
     # Check Elasticsearch
     cached = es_client.get_latest_summary(patient_id)
     if cached:
@@ -181,12 +172,12 @@ async def get_patient_summary(patient_id: str):
             "model_name": cached.get("model_name"),
             "model_version": cached.get("model_version")
         }
-    
+
     # Generate new summary
     vitals = es_client.get_patient_vitals(patient_id, settings.vitals_lookback_minutes)
     alerts = es_client.get_patient_alerts(patient_id, settings.vitals_lookback_minutes)
     patient_name = MOCK_PATIENTS.get(patient_id, f"Patient {patient_id}")
-    
+
     summary = summarizer.generate_summary(patient_id, patient_name, vitals, alerts)
     return summary
 
@@ -199,15 +190,50 @@ async def get_model_info():
 
 @app.post("/api/model/trigger-summary")
 async def trigger_summary(request: SummaryRequest, background_tasks: BackgroundTasks):
-    """Trigger manual summary generation for a patient."""
+    """Trigger manual summary generation for a patient.
+
+    Fetches the last 10 alerts from MongoDB via alert-engine service.
+    """
+    import httpx
+
     patient_id = request.patientId
-    
-    vitals = es_client.get_patient_vitals(patient_id, settings.vitals_lookback_minutes)
-    alerts = es_client.get_patient_alerts(patient_id, settings.vitals_lookback_minutes)
     patient_name = MOCK_PATIENTS.get(patient_id, f"Patient {patient_id}")
-    
+
+    # Fetch vitals from Elasticsearch
+    vitals = es_client.get_patient_vitals(patient_id, settings.vitals_lookback_minutes)
+
+    # Fetch alerts from alert-engine's MongoDB endpoint (persistent, last 5)
+    alerts = []
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # The alert-engine exposes /api/alerts/{patient_id}/recent for MongoDB-backed alerts
+            response = await client.get(f"http://alert-engine:8002/api/alerts/{patient_id}/recent?count=5")
+            if response.status_code == 200:
+                alerts = response.json()
+                logger.info(f"Fetched {len(alerts)} alerts from MongoDB for patient {patient_id}")
+    except Exception as e:
+        logger.warning(f"Failed to fetch alerts from alert-engine: {e}, falling back to ES")
+        # Fallback to Elasticsearch
+        alerts = es_client.get_patient_alerts(patient_id, settings.vitals_lookback_minutes)
+
+    # Generate summary with persistent alerts
     summary = summarizer.generate_summary(patient_id, patient_name, vitals, alerts)
-    
+
+    # Log input and output for debugging
+    logger.info("=" * 60)
+    logger.info(f"SUMMARIZATION REQUEST for {patient_id} ({patient_name})")
+    logger.info("=" * 60)
+    logger.info(f"INPUT - Alerts ({len(alerts)}):")
+    for i, alert in enumerate(alerts[:5], 1):
+        alert_type = alert.get('type', 'Unknown')
+        alert_msg = alert.get('message', 'No message')
+        logger.info(f"  {i}. [{alert_type}] {alert_msg}")
+    logger.info("-" * 60)
+    logger.info(f"OUTPUT - Generated Summary:")
+    logger.info(f"  {summary['text']}")
+    logger.info(f"  (Processing time: {summary['processing_time_ms']}ms)")
+    logger.info("=" * 60)
+
     # Save to Elasticsearch in background
     background_tasks.add_task(
         es_client.save_summary,
@@ -218,8 +244,8 @@ async def trigger_summary(request: SummaryRequest, background_tasks: BackgroundT
         alerts_count=summary["alerts_count"],
         processing_time_ms=summary["processing_time_ms"]
     )
-    
-    return {"status": "generated", "summary": summary}
+
+    return summary
 
 
 if __name__ == "__main__":

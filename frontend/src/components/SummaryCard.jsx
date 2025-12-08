@@ -1,6 +1,6 @@
 import './SummaryCard.css'
 
-function SummaryCard({ summary, modelInfo }) {
+function SummaryCard({ summary, modelInfo, onGenerateSummary, isGenerating, alertsCount }) {
     const formatDate = (timestamp) => {
         return new Date(timestamp).toLocaleString([], {
             month: 'short',
@@ -27,19 +27,41 @@ function SummaryCard({ summary, modelInfo }) {
 
             <div className="summary-content">
                 {summary ? (
-                    <p className="summary-text">{summary.text}</p>
+                    <p className={`summary-text ${summary.error ? 'error' : ''}`}>{summary.text}</p>
                 ) : (
                     <div className="no-summary">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <circle cx="12" cy="12" r="10" />
                             <path d="M8 12h.01M12 12h.01M16 12h.01" />
                         </svg>
-                        <p>Generating clinical summary...</p>
+                        <p>Click the button below to generate a summary of the last {Math.min(alertsCount || 0, 5)} alerts.</p>
                     </div>
                 )}
             </div>
 
-            {summary && (
+            <div className="summary-actions">
+                <button
+                    className="generate-summary-btn"
+                    onClick={onGenerateSummary}
+                    disabled={isGenerating || alertsCount === 0}
+                >
+                    {isGenerating ? (
+                        <>
+                            <span className="btn-spinner"></span>
+                            Generating...
+                        </>
+                    ) : (
+                        <>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                            </svg>
+                            Generate Summary ({Math.min(alertsCount || 0, 5)} alerts)
+                        </>
+                    )}
+                </button>
+            </div>
+
+            {summary && !summary.error && (
                 <div className="summary-footer">
                     <span className="summary-time">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
