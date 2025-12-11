@@ -143,7 +143,7 @@ pipeline {
                         sh 'sleep 10'
 
                         echo "Running deployment tests..."
-                        sh 'chmod +x test-deployment.sh'
+                        sh 'chmod +x test-deployment.sh curl-test.sh logstash-test.sh network-check.sh'
                         sh './test-deployment.sh'
                     } finally {
                         echo "Tearing down integration test environment..."
