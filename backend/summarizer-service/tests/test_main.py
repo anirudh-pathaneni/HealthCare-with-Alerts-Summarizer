@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
-from app.summarizer import summarizer, generate_input_text
+from app.summarizer import summarizer, format_vitals_for_model
 
 client = TestClient(app)
 
@@ -27,7 +27,7 @@ class TestSummariesEndpoint:
         response = client.get("/api/summaries")
         assert response.status_code == 200
         assert isinstance(response.json(), list)
-    
+
     def test_get_patient_summary(self):
         response = client.get("/api/summaries/P001")
         assert response.status_code == 200
@@ -36,7 +36,7 @@ class TestSummariesEndpoint:
 
 
 class TestInputGeneration:
-    def test_generate_input_with_vitals(self):
+    def test_format_vitals_for_model(self):
         vitals = [
             {
                 "heart_rate": 80,
@@ -47,30 +47,26 @@ class TestInputGeneration:
                 "respiratory_rate": 16
             }
         ]
-        alerts = []
-        
-        input_text = generate_input_text(vitals, alerts, "John Doe")
-        assert "John Doe" in input_text
-        assert "Heart rate" in input_text
-    
-    def test_generate_input_with_alerts(self):
+
+        input_text = format_vitals_for_model("P001", vitals)
+        assert "HR=80" in input_text
+        assert "SpO2=98" in input_text
+        assert "Patient 1" in input_text
+
+    def test_format_vitals_with_blood_pressure(self):
         vitals = [
             {
                 "heart_rate": 80,
                 "spo2": 85,
-                "systolic_bp": 120,
-                "diastolic_bp": 80,
+                "blood_pressure": {"systolic": 140, "diastolic": 90},
                 "temperature": 37.0,
                 "respiratory_rate": 16
             }
         ]
-        alerts = [
-            {"severity": "critical", "alert_type": "Hypoxia Alert"},
-            {"severity": "warning", "alert_type": "Fever Alert"}
-        ]
-        
-        input_text = generate_input_text(vitals, alerts, "Jane Doe")
-        assert "critical" in input_text.lower() or "alert" in input_text.lower()
+
+        input_text = format_vitals_for_model("P002", vitals)
+        assert "BP=140/90" in input_text
+        assert "Patient 2" in input_text
 
 
 class TestSummarizer:
@@ -86,13 +82,13 @@ class TestSummarizer:
             }
         ]
         alerts = []
-        
+
         summary = summarizer.generate_summary("TEST001", "Test Patient", vitals, alerts)
         assert "text" in summary
         assert len(summary["text"]) > 0
         assert "patient_id" in summary
         assert summary["patient_id"] == "TEST001"
-    
+
     def test_model_info(self):
         info = summarizer.get_model_info()
         assert "name" in info
