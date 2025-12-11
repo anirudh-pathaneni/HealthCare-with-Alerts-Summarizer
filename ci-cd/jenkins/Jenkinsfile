@@ -162,11 +162,13 @@ pipeline {
                         sh "docker build -t ${ansibleRunnerImage} ."
 
                         // Run the playbook inside the container.
-                        // We mount the user's .kube directory to give kubectl inside the container access to the host's minikube cluster.
+                        // Mount .kube for kubeconfig, .minikube for certs, and kubernetes manifests directory
                         // The --network="host" flag is necessary for the container to access services running on the host, like the Kubernetes API.
                         sh """
                             docker run --rm --network="host" \
                                 -v ~/.kube:/root/.kube:ro \
+                                -v ~/.minikube:/Users/anirudhpathaneni/.minikube:ro \
+                                -v ${WORKSPACE}/infrastructure/kubernetes:/kubernetes:ro \
                                 ${ansibleRunnerImage} \
                                 ansible-playbook playbooks/backend.yml -e "DOCKER_REGISTRY=${DOCKER_REGISTRY} DOCKER_USERNAME=${DOCKER_USERNAME} APP_VERSION=${APP_VERSION}"
                         """

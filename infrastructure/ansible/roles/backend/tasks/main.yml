@@ -1,34 +1,39 @@
 ---
 # Backend Role - Deploy healthcare services to Kubernetes
+# Uses /kubernetes directory mounted from the host
+
 - name: Create healthcare namespace
-  command: kubectl apply -f {{ playbook_dir }}/../../../kubernetes/namespace.yaml
+  command: kubectl apply -f /kubernetes/namespace.yaml
   environment:
     KUBECONFIG: /root/.kube/config
 
 - name: Apply ConfigMaps
-  command: kubectl apply -f {{ playbook_dir }}/../../../kubernetes/configmaps/
+  command: kubectl apply -f /kubernetes/configmaps/
   environment:
     KUBECONFIG: /root/.kube/config
 
 - name: Apply Secrets
-  command: kubectl apply -f {{ playbook_dir }}/../../../kubernetes/secrets/
+  command: kubectl apply -f /kubernetes/secrets/
   environment:
     KUBECONFIG: /root/.kube/config
+  ignore_errors: yes
 
 - name: Deploy backend services
-  command: kubectl apply -f {{ playbook_dir }}/../../../kubernetes/deployments/
+  command: kubectl apply -f /kubernetes/deployments/
   environment:
     KUBECONFIG: /root/.kube/config
 
 - name: Apply Ingress
-  command: kubectl apply -f {{ playbook_dir }}/../../../kubernetes/ingress/
+  command: kubectl apply -f /kubernetes/ingress/
   environment:
     KUBECONFIG: /root/.kube/config
+  ignore_errors: yes
 
 - name: Apply HPA
-  command: kubectl apply -f {{ playbook_dir }}/../../../kubernetes/hpa/
+  command: kubectl apply -f /kubernetes/hpa/
   environment:
     KUBECONFIG: /root/.kube/config
+  ignore_errors: yes
 
 - name: Wait for deployments to be ready
   command: kubectl rollout status deployment/{{ item }} -n healthcare --timeout=300s
