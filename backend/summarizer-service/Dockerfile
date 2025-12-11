@@ -2,12 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies for torch
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
+# Install CPU-only PyTorch FIRST (200MB vs 2GB)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Install other dependencies (torch already installed, pip will skip it)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
