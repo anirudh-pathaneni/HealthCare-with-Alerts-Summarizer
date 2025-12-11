@@ -157,26 +157,23 @@ pipeline {
             steps {
                 dir('infrastructure/ansible') {
                     script {
-                        // Build the ansible runner image
+                        // Build the ansible runner image (no cache to ensure fresh build)
                         def ansibleRunnerImage = "ansible-runner:${APP_VERSION}"
-                        sh "docker build -t ${ansibleRunnerImage} ."
+                        sh "docker build --no-cache -t ${ansibleRunnerImage} ."
 
                         // Run Ansible in Docker with macOS-compatible networking
-                        // - Copy kubeconfig and modify for Docker access
-                        // - Use host.docker.internal instead of 127.0.0.1
-                        // - Skip TLS verification (cert doesn't include host.docker.internal)
-                        sh '''
-                            docker run --rm \\
-                                -v /Users/anirudhpathaneni/.kube:/tmp/.kube:ro \\
-                                -v /Users/anirudhpathaneni/.minikube:/Users/anirudhpathaneni/.minikube:ro \\
-                                -v ''' + env.WORKSPACE + '''/infrastructure/kubernetes:/kubernetes:ro \\
-                                ''' + ansibleRunnerImage + ''' \\
-                                sh -c "cp /tmp/.kube/config /root/.kube/config && \\
-                                       sed -i 's/127.0.0.1/host.docker.internal/g' /root/.kube/config && \\
-                                       sed -i '/certificate-authority:/d' /root/.kube/config && \\
-                                       sed -i 's/server:/insecure-skip-tls-verify: true\\n    server:/g' /root/.kube/config && \\
-                                       ansible-playbook playbooks/backend.yml"
-                        '''
+                        sh """
+                            docker run --rm \
+                                -v /Users/anirudhpathaneni/.kube:/tmp/.kube:ro \
+                                -v /Users/anirudhpathaneni/.minikube:/Users/anirudhpathaneni/.minikube:ro \
+                                -v \${WORKSPACE}/infrastructure/kubernetes:/kubernetes:ro \
+                                ${ansibleRunnerImage} \
+                                sh -c 'cp /tmp/.kube/config /root/.kube/config && \
+                                       sed -i "s/127.0.0.1/host.docker.internal/g" /root/.kube/config && \
+                                       sed -i "/certificate-authority:/d" /root/.kube/config && \
+                                       sed -i "s/server:/insecure-skip-tls-verify: true\\n    server:/g" /root/.kube/config && \
+                                       ansible-playbook playbooks/backend.yml'
+                        """
                     }
                 }
             }
