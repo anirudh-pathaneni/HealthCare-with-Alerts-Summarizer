@@ -161,25 +161,15 @@ pipeline {
                 sh "which python3"
             }
         }
-        
+
         stage('8. Deployment (Ansible)') {
             steps {
                 dir('infrastructure/ansible') {
                     script {
-                        // Initialize pyenv and run Ansible playbook
+                        // Use absolute path to ansible-playbook
                         sh '''
-                            # Initialize pyenv if present
-                            export PYENV_ROOT="$HOME/.pyenv"
-                            export PATH="$PYENV_ROOT/shims:$PYENV_ROOT/bin:$PATH"
-                            if command -v pyenv &> /dev/null; then
-                                eval "$(pyenv init -)"
-                            fi
-
-                            # Install Ansible if not present
-                            which ansible-playbook || pip3 install ansible --quiet
-
                             export ANSIBLE_ROLES_PATH=./roles
-                            ansible-playbook -i inventory/hosts playbooks/backend.yml
+                            /Users/anirudhpathaneni/.pyenv/shims/ansible-playbook -i inventory/hosts playbooks/backend.yml
                         '''
                     }
                 }
