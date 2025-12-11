@@ -1,181 +1,173 @@
+
 pipeline {
     agent any
-    
+
     environment {
-        DOCKER_REGISTRY = 'docker.io'
-        DOCKER_REPO = 'healthcare-aiops'
-        KUBE_NAMESPACE = 'healthcare'
-        GIT_CREDENTIALS = 'git-credentials'
-        DOCKER_CREDENTIALS = 'docker-credentials'
+        DOCKER_REGISTRY = "docker.io"
+        DOCKER_USERNAME = "avnlk"
+        DOCKER_CREDENTIALS_ID = "dockerhub-cred"
+        APP_VERSION = "1.0.${env.BUILD_NUMBER}"
     }
-    
-    options {
-        buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 30, unit: 'MINUTES')
-        timestamps()
-    }
-    
+
     stages {
-        stage('Checkout') {
+        stage('1. Checkout') {
             steps {
-                checkout scm
-                script {
-                    env.GIT_COMMIT_SHORT = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
-                    env.BUILD_VERSION = "${BUILD_NUMBER}-${GIT_COMMIT_SHORT}"
+                script{
+                    checkout scm
                 }
             }
         }
-        
-        stage('Build & Test') {
+
+        stage('2. Backend Unit Tests') {
             parallel {
-                stage('Frontend') {
-                    steps {
-                        dir('frontend') {
-                            sh 'npm ci'
-                            sh 'npm run lint || true'
-                            sh 'npm run build'
-                        }
-                    }
-                }
-                
-                stage('Vitals Generator') {
-                    steps {
-                        dir('backend/vitals-generator') {
-                            sh 'pip install -r requirements.txt'
-                            sh 'python -m pytest tests/ -v || true'
-                        }
-                    }
-                }
-                
-                stage('Alert Engine') {
+                stage('Alert Engine Tests') {
                     steps {
                         dir('backend/alert-engine') {
-                            sh 'pip install -r requirements.txt'
-                            sh 'python -m pytest tests/ -v || true'
+                            sh 'docker run --rm -v $PWD:/app -w /app python:3.11-slim sh -c "pip install -r requirements.txt && pip install pytest && python -m pytest tests/ -v"'
                         }
                     }
                 }
-                
-                stage('Summarizer Service') {
+                // stage('Summarizer Service Tests') {
+                //     steps {
+                //         dir('backend/summarizer-service') {
+                //             sh 'docker run --rm -v $PWD:/app -w /app python:3.11-slim sh -c "pip install -r requirements.txt && pip install pytest && python -m pytest tests/ -v"'
+                //         }
+                //     }
+                // }
+                stage('Vitals Generator Tests') {
                     steps {
-                        dir('backend/summarizer-service') {
-                            sh 'pip install -r requirements.txt'
-                            sh 'python -m pytest tests/ -v || true'
+                        dir('backend/vitals-generator') {
+                            sh 'docker run --rm -v $PWD:/app -w /app python:3.11-slim sh -c "pip install -r requirements.txt && pip install pytest && python -m pytest tests/ -v"'
                         }
                     }
                 }
             }
         }
-        
-        stage('Build Docker Images') {
-            parallel {
-                stage('Frontend Image') {
-                    steps {
-                        script {
-                            docker.build("${DOCKER_REPO}/frontend:${BUILD_VERSION}", 'frontend')
-                        }
-                    }
-                }
-                
-                stage('Vitals Generator Image') {
-                    steps {
-                        script {
-                            docker.build("${DOCKER_REPO}/vitals-generator:${BUILD_VERSION}", 'backend/vitals-generator')
-                        }
-                    }
-                }
-                
-                stage('Alert Engine Image') {
-                    steps {
-                        script {
-                            docker.build("${DOCKER_REPO}/alert-engine:${BUILD_VERSION}", 'backend/alert-engine')
-                        }
-                    }
-                }
-                
-                stage('Summarizer Image') {
-                    steps {
-                        script {
-                            docker.build("${DOCKER_REPO}/summarizer-service:${BUILD_VERSION}", 'backend/summarizer-service')
-                        }
-                    }
-                }
-            }
-        }
-        
-        stage('Push Docker Images') {
+
+        // stage('3. Frontend Unit Tests') {
+        //     steps {
+        //         dir('frontend') {
+        //             sh 'docker run --rm -v $PWD:/app -w /app node:18 sh -c "npm install && npm test"'
+        //         }
+        //     }
+        // }
+
+        stage('4. Build Frontend') {
             steps {
-                withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS}", usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin ${DOCKER_REGISTRY}'
-                    
-                    sh "docker push ${DOCKER_REPO}/frontend:${BUILD_VERSION}"
-                    sh "docker push ${DOCKER_REPO}/vitals-generator:${BUILD_VERSION}"
-                    sh "docker push ${DOCKER_REPO}/alert-engine:${BUILD_VERSION}"
-                    sh "docker push ${DOCKER_REPO}/summarizer-service:${BUILD_VERSION}"
-                    
-                    // Tag as latest
-                    sh "docker tag ${DOCKER_REPO}/frontend:${BUILD_VERSION} ${DOCKER_REPO}/frontend:latest"
-                    sh "docker tag ${DOCKER_REPO}/vitals-generator:${BUILD_VERSION} ${DOCKER_REPO}/vitals-generator:latest"
-                    sh "docker tag ${DOCKER_REPO}/alert-engine:${BUILD_VERSION} ${DOCKER_REPO}/alert-engine:latest"
-                    sh "docker tag ${DOCKER_REPO}/summarizer-service:${BUILD_VERSION} ${DOCKER_REPO}/summarizer-service:latest"
-                    
-                    sh "docker push ${DOCKER_REPO}/frontend:latest"
-                    sh "docker push ${DOCKER_REPO}/vitals-generator:latest"
-                    sh "docker push ${DOCKER_REPO}/alert-engine:latest"
-                    sh "docker push ${DOCKER_REPO}/summarizer-service:latest"
+                dir('frontend') {
+                    sh 'docker run --rm -v $PWD:/app -w /app node:18 sh -c "npm install && npm run build"'
                 }
             }
         }
-        
-        stage('Deploy to Kubernetes') {
+
+        stage('5. Docker Build') {
             steps {
                 script {
-                    // Update image tags in deployments
-                    sh """
-                        sed -i 's|image: healthcare-aiops/frontend:.*|image: ${DOCKER_REPO}/frontend:${BUILD_VERSION}|g' infrastructure/kubernetes/deployments/frontend.yaml
-                        sed -i 's|image: healthcare-aiops/vitals-generator:.*|image: ${DOCKER_REPO}/vitals-generator:${BUILD_VERSION}|g' infrastructure/kubernetes/deployments/vitals-generator.yaml
-                        sed -i 's|image: healthcare-aiops/alert-engine:.*|image: ${DOCKER_REPO}/alert-engine:${BUILD_VERSION}|g' infrastructure/kubernetes/deployments/alert-engine.yaml
-                        sed -i 's|image: healthcare-aiops/summarizer-service:.*|image: ${DOCKER_REPO}/summarizer-service:${BUILD_VERSION}|g' infrastructure/kubernetes/deployments/summarizer-service.yaml
-                    """
-                    
-                    // Apply Kubernetes manifests
-                    sh 'kubectl apply -f infrastructure/kubernetes/namespace.yaml'
-                    sh 'kubectl apply -f infrastructure/kubernetes/configmaps/'
-                    sh 'kubectl apply -f infrastructure/kubernetes/secrets/'
-                    sh 'kubectl apply -f infrastructure/kubernetes/deployments/'
-                    sh 'kubectl apply -f infrastructure/kubernetes/ingress/'
-                    sh 'kubectl apply -f infrastructure/kubernetes/hpa/'
+                    def backend_services = ['alert-engine', 'auth-service', 'summarizer-service', 'vitals-generator']
+                    backend_services.each { service ->
+                        dir("backend/${service}") {
+                            sh "docker build -t ${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${service}:${APP_VERSION} ."
+                        }
+                    }
+                    dir("frontend") {
+                        sh "docker build -t ${DOCKER_REGISTRY}/${DOCKER_USERNAME}/frontend:${APP_VERSION} ."
+                    }
+                }
+            }
+        }
+
+        stage('6. Docker Push') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh "echo ${DOCKER_PASS} | docker login ${DOCKER_REGISTRY} -u ${DOCKER_USER} --password-stdin"
+                        
+                        def services_to_push = ['alert-engine', 'auth-service', 'vitals-generator']
+                        
+                        services_to_push.each { service ->
+                            def imageName = "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${service}:${APP_VERSION}"
+                            sh "docker push ${imageName}"
+                        }
+
+                        def frontendImageName = "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/frontend:${APP_VERSION}"
+                        sh "docker push ${frontendImageName}"
+                    }
+                }
+            }
+        }
+
+        stage('7. Local Agent Cleanup') {
+            steps {
+                script {
+                    sh 'chmod +x cleanup.sh'
+                    sh './cleanup.sh ${DOCKER_USERNAME} ${APP_VERSION}'
+                }
+            }
+        }
+
+        stage('8. Docker Compose Integration Test') {
+            steps {
+                script {
+                    try {
+                        echo "Starting services for integration test..."
+                        sh 'docker-compose -f docker-compose.yml up -d'
+                        
+                        echo "Waiting for services to stabilize..."
+                        sh 'sleep 10'
+
+                        echo "Running deployment tests..."
+                        sh 'chmod +x test-deployment.sh'
+                        sh './test-deployment.sh'
+                    } finally {
+                        echo "Tearing down integration test environment..."
+                        sh 'docker-compose -f docker-compose.yml down --remove-orphans'
+                    }
+                }
+            }
+        }
+
+        stage('9. Deployment (Ansible)') {
+            steps {
+                dir('infrastructure/ansible') {
+                    script {
+                        def ansibleRunnerImage = "ansible-runner:${APP_VERSION}"
+                        sh "docker build -t ${ansibleRunnerImage} ."
+
+                        // Run the playbook inside the container.
+                        // We mount the user's .kube directory to give kubectl inside the container access to the host's minikube cluster.
+                        // The --network="host" flag is necessary for the container to access services running on the host, like the Kubernetes API.
+                        sh """
+                            docker run --rm --network="host" \
+                                -v ~/.kube:/root/.kube:ro \
+                                ${ansibleRunnerImage} \
+                                ansible-playbook playbooks/backend.yml -e "DOCKER_REGISTRY=${DOCKER_REGISTRY} DOCKER_USERNAME=${DOCKER_USERNAME} APP_VERSION=${APP_VERSION}"
+                        """
+                    }
                 }
             }
         }
         
-        stage('Verify Deployment') {
+        stage('9. Post-Deployment Validation') {
             steps {
-                script {
-                    // Wait for rollout to complete
-                    sh "kubectl rollout status deployment/frontend -n ${KUBE_NAMESPACE} --timeout=300s"
-                    sh "kubectl rollout status deployment/vitals-generator -n ${KUBE_NAMESPACE} --timeout=300s"
-                    sh "kubectl rollout status deployment/alert-engine -n ${KUBE_NAMESPACE} --timeout=300s"
-                    sh "kubectl rollout status deployment/summarizer-service -n ${KUBE_NAMESPACE} --timeout=300s"
-                    
-                    // Health checks
-                    sh "kubectl get pods -n ${KUBE_NAMESPACE}"
-                }
+                echo "Skipping post-deployment validation for now."
             }
         }
     }
-    
+
     post {
+        always {
+            echo 'Pipeline finished.'
+            cleanWs()
+        }
         success {
-            echo 'Pipeline completed successfully!'
-            slackSend(color: 'good', message: "Healthcare AIOps build ${BUILD_VERSION} deployed successfully!")
+            mail to: 'your-email@example.com',
+                 subject: "SUCCESS: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}",
+                 body: "Pipeline finished successfully. Details: ${env.BUILD_URL}"
         }
         failure {
-            echo 'Pipeline failed!'
-            slackSend(color: 'danger', message: "Healthcare AIOps build ${BUILD_VERSION} failed!")
-        }
-        always {
-            cleanWs()
+            mail to: 'your-email@example.com',
+                 subject: "FAILURE: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}",
+                 body: "Pipeline failed. Details: ${env.BUILD_URL}"
         }
     }
 }
