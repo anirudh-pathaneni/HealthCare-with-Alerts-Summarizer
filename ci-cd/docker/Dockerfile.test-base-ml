@@ -1,0 +1,23 @@
+# Pre-built test image for summarizer-service (heavy ML dependencies)
+FROM python:3.11-slim
+
+# Install CPU-only PyTorch (MUCH smaller: ~200MB vs 2GB)
+# Using PyTorch CPU index for faster download
+RUN pip install --no-cache-dir \
+    torch --index-url https://download.pytorch.org/whl/cpu
+
+# Install other dependencies
+RUN pip install --no-cache-dir \
+    fastapi==0.104.1 \
+    uvicorn[standard]==0.24.0 \
+    pydantic==2.5.2 \
+    pydantic-settings==2.1.0 \
+    elasticsearch==8.11.1 \
+    python-json-logger==2.0.7 \
+    httpx==0.25.2 \
+    python-dotenv==1.0.0 \
+    transformers==4.36.0 \
+    sentencepiece==0.1.99 \
+    pytest
+
+WORKDIR /app

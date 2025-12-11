@@ -4,12 +4,40 @@ pipeline {
 
     environment {
         DOCKER_REGISTRY = "docker.io"
-        DOCKER_USERNAME = "avnlk"
-        DOCKER_CREDENTIALS_ID = "dockerhub-cred"
+        DOCKER_USERNAME = "5unnysunny"
+        DOCKER_CREDENTIALS_ID = "docker-hub-credentials"
         APP_VERSION = "1.0.${env.BUILD_NUMBER}"
+        // Pre-built test image tags (built once, reused forever)
+        TEST_IMAGE_LIGHT = "healthcare-test-light:latest"
+        TEST_IMAGE_ML = "healthcare-test-ml:latest"
+        TEST_IMAGE_NODE = "healthcare-test-node:latest"
     }
 
     stages {
+        stage('0. Build Test Images (if needed)') {
+            steps {
+                script {
+                    // Build LIGHT test image (alert-engine, vitals-generator) - only if not exists
+                    def lightExists = sh(script: "docker images -q ${TEST_IMAGE_LIGHT} 2>/dev/null", returnStdout: true).trim()
+                    if (!lightExists) {
+                        echo "Building light test image (first time only)..."
+                        sh "docker build -t ${TEST_IMAGE_LIGHT} -f ci-cd/docker/Dockerfile.test-base-light ."
+                    } else {
+                        echo "Light test image already exists, skipping build."
+                    }
+
+                    // Build ML test image (summarizer-service) - only if not exists
+                    def mlExists = sh(script: "docker images -q ${TEST_IMAGE_ML} 2>/dev/null", returnStdout: true).trim()
+                    if (!mlExists) {
+                        echo "Building ML test image (first time only - this may take a few minutes)..."
+                        sh "docker build -t ${TEST_IMAGE_ML} -f ci-cd/docker/Dockerfile.test-base-ml ."
+                    } else {
+                        echo "ML test image already exists, skipping build."
+                    }
+                }
+            }
+        }
+
         stage('1. Checkout') {
             steps {
                 script{
@@ -23,39 +51,44 @@ pipeline {
                 stage('Alert Engine Tests') {
                     steps {
                         dir('backend/alert-engine') {
-                            sh 'docker run --rm -v $PWD:/app -w /app python:3.11-slim sh -c "pip install -r requirements.txt && pip install pytest && python -m pytest tests/ -v"'
+                            // Use pre-built image - NO pip install needed!
+                            sh 'docker run --rm -v $PWD:/app -w /app ${TEST_IMAGE_LIGHT} python -m pytest tests/ -v'
                         }
                     }
                 }
-                // stage('Summarizer Service Tests') {
-                //     steps {
-                //         dir('backend/summarizer-service') {
-                //             sh 'docker run --rm -v $PWD:/app -w /app python:3.11-slim sh -c "pip install -r requirements.txt && pip install pytest && python -m pytest tests/ -v"'
-                //         }
-                //     }
-                // }
+                stage('Summarizer Service Tests') {
+                    steps {
+                        dir('backend/summarizer-service') {
+                            // Use pre-built ML image - NO pip install needed!
+                            sh 'docker run --rm -v $PWD:/app -w /app ${TEST_IMAGE_ML} python -m pytest tests/ -v'
+                        }
+                    }
+                }
                 stage('Vitals Generator Tests') {
                     steps {
                         dir('backend/vitals-generator') {
-                            sh 'docker run --rm -v $PWD:/app -w /app python:3.11-slim sh -c "pip install -r requirements.txt && pip install pytest && python -m pytest tests/ -v"'
+                            // Use pre-built image - NO pip install needed!
+                            sh 'docker run --rm -v $PWD:/app -w /app ${TEST_IMAGE_LIGHT} python -m pytest tests/ -v'
                         }
                     }
                 }
             }
         }
 
-        // stage('3. Frontend Unit Tests') {
-        //     steps {
-        //         dir('frontend') {
-        //             sh 'docker run --rm -v $PWD:/app -w /app node:18 sh -c "npm install && npm test"'
-        //         }
-        //     }
-        // }
+        stage('3. Frontend Unit Tests') {
+            steps {
+                dir('frontend') {
+                    // Use npm cache volume to speed up installs
+                    sh 'docker run --rm -v $PWD:/app -v npm-cache:/root/.npm -w /app node:18 sh -c "npm ci --prefer-offline && npm test"'
+                }
+            }
+        }
 
         stage('4. Build Frontend') {
             steps {
                 dir('frontend') {
-                    sh 'docker run --rm -v $PWD:/app -w /app node:18 sh -c "npm install && npm run build"'
+                    // Reuse npm cache, use npm ci for faster, reliable installs
+                    sh 'docker run --rm -v $PWD:/app -v npm-cache:/root/.npm -w /app node:18 sh -c "npm ci --prefer-offline && npm run build"'
                 }
             }
         }
@@ -81,9 +114,9 @@ pipeline {
                 script {
                     withCredentials([usernamePassword(credentialsId: DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh "echo ${DOCKER_PASS} | docker login ${DOCKER_REGISTRY} -u ${DOCKER_USER} --password-stdin"
-                        
-                        def services_to_push = ['alert-engine', 'auth-service', 'vitals-generator']
-                        
+
+                        def services_to_push = ['alert-engine', 'auth-service', 'summarizer-service', 'vitals-generator']
+
                         services_to_push.each { service ->
                             def imageName = "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${service}:${APP_VERSION}"
                             sh "docker push ${imageName}"
@@ -111,7 +144,7 @@ pipeline {
                     try {
                         echo "Starting services for integration test..."
                         sh 'docker-compose -f docker-compose.yml up -d'
-                        
+
                         echo "Waiting for services to stabilize..."
                         sh 'sleep 10'
 
@@ -126,33 +159,40 @@ pipeline {
             }
         }
 
-        stage('9. Deployment (Ansible)') {
-            steps {
-                dir('infrastructure/ansible') {
-                    script {
-                        // Build the ansible runner image from the Dockerfile in the current directory ('infrastructure/ansible')
-                        def ansibleRunnerImage = "ansible-runner:${APP_VERSION}"
-                        sh "docker build -t ${ansibleRunnerImage} ."
+        // stage('9. Deployment (Ansible)') {
+        //     steps {
+        //         dir('infrastructure/ansible') {
+        //             script {
+        //                 // Build the ansible runner image from the Dockerfile in the current directory ('infrastructure/ansible')
+        //                 def ansibleRunnerImage = "ansible-runner:${APP_VERSION}"
+        //                 sh "docker build -t ${ansibleRunnerImage} ."
 
-                        // Run the playbook inside the container.
-                        // We mount the user's .kube directory to give kubectl inside the container access to the host's minikube cluster.
-                        // The --network="host" flag is necessary for the container to access services running on the host, like the Kubernetes API.
-                        sh """
-                            docker run --rm --network="host" \
-                                -v ~/.kube:/root/.kube:ro \
-                                ${ansibleRunnerImage} \
-                                ansible-playbook playbooks/backend.yml -e "DOCKER_REGISTRY=${DOCKER_REGISTRY} DOCKER_USERNAME=${DOCKER_USERNAME} APP_VERSION=${APP_VERSION}"
-                        """
-                    }
-                }
-            }
-        }
-        
-        stage('9. Post-Deployment Validation') {
-            steps {
-                echo "Skipping post-deployment validation for now."
-            }
-        }
+        //                 // Run the playbook inside the container.
+        //                 // We mount the user's .kube directory to give kubectl inside the container access to the host's minikube cluster.
+        //                 // The --network="host" flag is necessary for the container to access services running on the host, like the Kubernetes API.
+        //                 sh """
+        //                     docker run --rm --network="host" \
+        //                         -v ~/.kube:/root/.kube:ro \
+        //                         ${ansibleRunnerImage} \
+        //                         ansible-playbook playbooks/backend.yml -e "DOCKER_REGISTRY=${DOCKER_REGISTRY} DOCKER_USERNAME=${DOCKER_USERNAME} APP_VERSION=${APP_VERSION}"
+        //                 """
+        //             }
+        //         }
+        //     }
+        // }
+
+        // stage('10. Post-Deployment Validation') {
+        //     steps {
+        //         script {
+        //             echo "Validating Kubernetes deployments..."
+        //             sh 'kubectl rollout status deployment/alert-engine -n healthcare --timeout=120s'
+        //             sh 'kubectl rollout status deployment/summarizer-service -n healthcare --timeout=120s'
+        //             sh 'kubectl rollout status deployment/vitals-generator -n healthcare --timeout=120s'
+        //             sh 'kubectl rollout status deployment/frontend -n healthcare --timeout=120s'
+        //             echo "All deployments validated successfully."
+        //         }
+        //     }
+        // }
     }
 
     post {
