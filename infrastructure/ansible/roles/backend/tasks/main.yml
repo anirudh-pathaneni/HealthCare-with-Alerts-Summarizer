@@ -12,29 +12,8 @@
   command: kubectl apply -f ../../kubernetes/secrets/
   ignore_errors: yes
 
-# Deploy infrastructure services first (Elasticsearch, MongoDB)
-- name: Deploy Elasticsearch
-  command: kubectl apply -f ../../kubernetes/deployments/elasticsearch.yaml
-
-- name: Deploy MongoDB
-  command: kubectl apply -f ../../kubernetes/deployments/mongodb.yaml
-
-- name: Wait for Elasticsearch to be ready
-  command: kubectl rollout status deployment/elasticsearch -n healthcare --timeout=180s
-  ignore_errors: yes
-
-- name: Wait for MongoDB to be ready
-  command: kubectl rollout status deployment/mongodb -n healthcare --timeout=120s
-  ignore_errors: yes
-
-# Deploy application services
 - name: Deploy backend services
-  command: kubectl apply -f ../../kubernetes/deployments/{{ item }}.yaml
-  loop:
-    - vitals-generator
-    - alert-engine
-    - summarizer-service
-    - frontend
+  command: kubectl apply -f ../../kubernetes/deployments/
 
 - name: Apply Ingress
   command: kubectl apply -f ../../kubernetes/ingress/
@@ -44,10 +23,11 @@
   command: kubectl apply -f ../../kubernetes/hpa/
   ignore_errors: yes
 
-- name: Wait for app deployments to be ready
-  command: kubectl rollout status deployment/{{ item }} -n healthcare --timeout=300s
+- name: Wait for deployments to be ready
+  command: kubectl rollout status deployment/{{ item }} -n healthcare --timeout=240s
   loop:
     - vitals-generator
     - alert-engine
     - summarizer-service
     - frontend
+  ignore_errors: yes

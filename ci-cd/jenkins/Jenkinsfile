@@ -170,20 +170,11 @@ pipeline {
             steps {
                 dir('infrastructure/ansible') {
                     script {
-                        // Deploy using Ansible
+                        // Use absolute path to ansible-playbook
                         sh '''
                             export ANSIBLE_ROLES_PATH=./roles
                             /Users/anirudhpathaneni/.pyenv/shims/ansible-playbook -i inventory/hosts playbooks/backend.yml
                         '''
-
-                        // Update image versions to use the versioned images we just pushed
-                        def services = ['vitals-generator', 'alert-engine', 'summarizer-service', 'frontend']
-                        services.each { service ->
-                            def imageName = "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${service}:${APP_VERSION}"
-                            sh "kubectl set image deployment/${service} ${service}=${imageName} -n healthcare"
-                        }
-
-                        echo "Updated all deployments to version ${APP_VERSION}"
                     }
                 }
             }
