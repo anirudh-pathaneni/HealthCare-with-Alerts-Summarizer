@@ -24,7 +24,7 @@ spec:
     spec:
       containers:
         - name: vitals-generator
-          image: healthcare-aiops/vitals-generator:latest
+          image: docker.io/5unnysunny/vitals-generator:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8001

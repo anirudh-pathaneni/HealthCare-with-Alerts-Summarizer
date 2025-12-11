@@ -1,21 +1,8 @@
 # Ansible Inventory for Healthcare AIOps
+# Updated for local Minikube deployment via Jenkins
 
 [kubernetes_masters]
-k8s-master ansible_host=192.168.1.10 ansible_user=ubuntu
-
-[kubernetes_workers]
-k8s-worker-1 ansible_host=192.168.1.11 ansible_user=ubuntu
-k8s-worker-2 ansible_host=192.168.1.12 ansible_user=ubuntu
-
-[elk]
-elk-node ansible_host=192.168.1.20 ansible_user=ubuntu
-
-[jenkins]
-jenkins-server ansible_host=192.168.1.30 ansible_user=ubuntu
-
-[vault]
-vault-server ansible_host=192.168.1.40 ansible_user=ubuntu
+localhost ansible_connection=local
 
 [all:vars]
 ansible_python_interpreter=/usr/bin/python3
-ansible_ssh_private_key_file=~/.ssh/id_rsa

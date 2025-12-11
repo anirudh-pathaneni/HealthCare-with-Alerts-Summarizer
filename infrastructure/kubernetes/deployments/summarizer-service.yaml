@@ -24,7 +24,7 @@ spec:
     spec:
       containers:
         - name: summarizer-service
-          image: healthcare-aiops/summarizer-service:latest
+          image: docker.io/5unnysunny/summarizer-service:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8003

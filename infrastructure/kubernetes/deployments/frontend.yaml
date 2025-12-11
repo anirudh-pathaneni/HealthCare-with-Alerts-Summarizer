@@ -24,7 +24,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: healthcare-aiops/frontend:latest
+          image: docker.io/5unnysunny/frontend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 80

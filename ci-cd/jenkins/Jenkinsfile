@@ -153,40 +153,40 @@ pipeline {
             }
         }
 
-        // stage('9. Deployment (Ansible)') {
-        //     steps {
-        //         dir('infrastructure/ansible') {
-        //             script {
-        //                 // Build the ansible runner image from the Dockerfile in the current directory ('infrastructure/ansible')
-        //                 def ansibleRunnerImage = "ansible-runner:${APP_VERSION}"
-        //                 sh "docker build -t ${ansibleRunnerImage} ."
+        stage('9. Deployment (Ansible)') {
+            steps {
+                dir('infrastructure/ansible') {
+                    script {
+                        // Build the ansible runner image from the Dockerfile in the current directory ('infrastructure/ansible')
+                        def ansibleRunnerImage = "ansible-runner:${APP_VERSION}"
+                        sh "docker build -t ${ansibleRunnerImage} ."
 
-        //                 // Run the playbook inside the container.
-        //                 // We mount the user's .kube directory to give kubectl inside the container access to the host's minikube cluster.
-        //                 // The --network="host" flag is necessary for the container to access services running on the host, like the Kubernetes API.
-        //                 sh """
-        //                     docker run --rm --network="host" \
-        //                         -v ~/.kube:/root/.kube:ro \
-        //                         ${ansibleRunnerImage} \
-        //                         ansible-playbook playbooks/backend.yml -e "DOCKER_REGISTRY=${DOCKER_REGISTRY} DOCKER_USERNAME=${DOCKER_USERNAME} APP_VERSION=${APP_VERSION}"
-        //                 """
-        //             }
-        //         }
-        //     }
-        // }
+                        // Run the playbook inside the container.
+                        // We mount the user's .kube directory to give kubectl inside the container access to the host's minikube cluster.
+                        // The --network="host" flag is necessary for the container to access services running on the host, like the Kubernetes API.
+                        sh """
+                            docker run --rm --network="host" \
+                                -v ~/.kube:/root/.kube:ro \
+                                ${ansibleRunnerImage} \
+                                ansible-playbook playbooks/backend.yml -e "DOCKER_REGISTRY=${DOCKER_REGISTRY} DOCKER_USERNAME=${DOCKER_USERNAME} APP_VERSION=${APP_VERSION}"
+                        """
+                    }
+                }
+            }
+        }
 
-        // stage('10. Post-Deployment Validation') {
-        //     steps {
-        //         script {
-        //             echo "Validating Kubernetes deployments..."
-        //             sh 'kubectl rollout status deployment/alert-engine -n healthcare --timeout=120s'
-        //             sh 'kubectl rollout status deployment/summarizer-service -n healthcare --timeout=120s'
-        //             sh 'kubectl rollout status deployment/vitals-generator -n healthcare --timeout=120s'
-        //             sh 'kubectl rollout status deployment/frontend -n healthcare --timeout=120s'
-        //             echo "All deployments validated successfully."
-        //         }
-        //     }
-        // }
+        stage('10. Post-Deployment Validation') {
+            steps {
+                script {
+                    echo "Validating Kubernetes deployments..."
+                    sh 'kubectl rollout status deployment/alert-engine -n healthcare --timeout=120s'
+                    sh 'kubectl rollout status deployment/summarizer-service -n healthcare --timeout=120s'
+                    sh 'kubectl rollout status deployment/vitals-generator -n healthcare --timeout=120s'
+                    sh 'kubectl rollout status deployment/frontend -n healthcare --timeout=120s'
+                    echo "All deployments validated successfully."
+                }
+            }
+        }
     }
 
     post {

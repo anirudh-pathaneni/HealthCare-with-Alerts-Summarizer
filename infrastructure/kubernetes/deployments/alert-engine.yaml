@@ -24,7 +24,7 @@ spec:
     spec:
       containers:
         - name: alert-engine
-          image: healthcare-aiops/alert-engine:latest
+          image: docker.io/5unnysunny/alert-engine:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8002

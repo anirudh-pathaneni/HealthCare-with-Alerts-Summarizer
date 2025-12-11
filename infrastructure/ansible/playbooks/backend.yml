@@ -1,8 +1,8 @@
 ---
 # Backend services deployment playbook
 - name: Deploy Backend Services
-  hosts: kubernetes_masters
-  become: yes
+  hosts: localhost
+  connection: local
   gather_facts: yes
 
   roles:
