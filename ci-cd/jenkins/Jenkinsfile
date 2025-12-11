@@ -157,9 +157,11 @@ pipeline {
             steps {
                 dir('infrastructure/ansible') {
                     script {
-                        // Run Ansible directly from Jenkins agent (requires ansible installed on agent)
-                        // Update roles path for local execution
+                        // Install Ansible if not present, then run playbook
                         sh '''
+                            # Install Ansible via pip if not present
+                            which ansible-playbook || pip3 install ansible --quiet
+
                             export ANSIBLE_ROLES_PATH=./roles
                             ansible-playbook -i inventory/hosts playbooks/backend.yml
                         '''
