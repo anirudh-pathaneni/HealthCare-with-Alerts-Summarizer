@@ -153,36 +153,36 @@ pipeline {
             }
         }
 
-        stage('9. Deployment (Ansible)') {
+        stage('8. Deployment (Ansible)') {
             steps {
                 dir('infrastructure/ansible') {
                     script {
-                        // Build the ansible runner image from the Dockerfile in the current directory ('infrastructure/ansible')
+                        // Build the ansible runner image
                         def ansibleRunnerImage = "ansible-runner:${APP_VERSION}"
                         sh "docker build -t ${ansibleRunnerImage} ."
 
-                        // Run the playbook inside the container.
-                        // macOS Docker can't use --network=host properly, so we:
-                        // 1. Copy kubeconfig to a writable location
-                        // 2. Replace 127.0.0.1 with host.docker.internal (Docker's host DNS)
-                        // 3. Skip TLS verification (cert doesn't include host.docker.internal as valid hostname)
-                        sh """
-                            docker run --rm \
-                                -v /Users/anirudhpathaneni/.kube:/tmp/.kube:ro \
-                                -v /Users/anirudhpathaneni/.minikube:/Users/anirudhpathaneni/.minikube:ro \
-                                -v ${WORKSPACE}/infrastructure/kubernetes:/kubernetes:ro \
-                                ${ansibleRunnerImage} \
-                                sh -c 'cp /tmp/.kube/config /root/.kube/config && \\
-                                       sed -i "s/127.0.0.1/host.docker.internal/g" /root/.kube/config && \\
-                                       sed -i "s/certificate-authority:/insecure-skip-tls-verify: true\\n    #certificate-authority:/g" /root/.kube/config && \\
-                                       ansible-playbook playbooks/backend.yml -e "DOCKER_REGISTRY=${DOCKER_REGISTRY} DOCKER_USERNAME=${DOCKER_USERNAME} APP_VERSION=${APP_VERSION}"'
-                        """
+                        // Run Ansible in Docker with macOS-compatible networking
+                        // - Copy kubeconfig and modify for Docker access
+                        // - Use host.docker.internal instead of 127.0.0.1
+                        // - Skip TLS verification (cert doesn't include host.docker.internal)
+                        sh '''
+                            docker run --rm \\
+                                -v /Users/anirudhpathaneni/.kube:/tmp/.kube:ro \\
+                                -v /Users/anirudhpathaneni/.minikube:/Users/anirudhpathaneni/.minikube:ro \\
+                                -v ''' + env.WORKSPACE + '''/infrastructure/kubernetes:/kubernetes:ro \\
+                                ''' + ansibleRunnerImage + ''' \\
+                                sh -c "cp /tmp/.kube/config /root/.kube/config && \\
+                                       sed -i 's/127.0.0.1/host.docker.internal/g' /root/.kube/config && \\
+                                       sed -i '/certificate-authority:/d' /root/.kube/config && \\
+                                       sed -i 's/server:/insecure-skip-tls-verify: true\\n    server:/g' /root/.kube/config && \\
+                                       ansible-playbook playbooks/backend.yml"
+                        '''
                     }
                 }
             }
         }
 
-        stage('10. Post-Deployment Validation') {
+        stage('9. Post-Deployment Validation') {
             steps {
                 script {
                     echo "Validating Kubernetes deployments..."
