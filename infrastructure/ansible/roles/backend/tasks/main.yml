@@ -1,44 +1,30 @@
 ---
 # Backend Role - Deploy healthcare services to Kubernetes
-# Uses /kubernetes directory mounted from the host
+# Uses relative paths when running from infrastructure/ansible directory
 
 - name: Create healthcare namespace
-  command: kubectl apply -f /kubernetes/namespace.yaml
-  environment:
-    KUBECONFIG: /root/.kube/config
+  command: kubectl apply -f ../../kubernetes/namespace.yaml
 
 - name: Apply ConfigMaps
-  command: kubectl apply -f /kubernetes/configmaps/
-  environment:
-    KUBECONFIG: /root/.kube/config
+  command: kubectl apply -f ../../kubernetes/configmaps/
 
 - name: Apply Secrets
-  command: kubectl apply -f /kubernetes/secrets/
-  environment:
-    KUBECONFIG: /root/.kube/config
+  command: kubectl apply -f ../../kubernetes/secrets/
   ignore_errors: yes
 
 - name: Deploy backend services
-  command: kubectl apply -f /kubernetes/deployments/
-  environment:
-    KUBECONFIG: /root/.kube/config
+  command: kubectl apply -f ../../kubernetes/deployments/
 
 - name: Apply Ingress
-  command: kubectl apply -f /kubernetes/ingress/
-  environment:
-    KUBECONFIG: /root/.kube/config
+  command: kubectl apply -f ../../kubernetes/ingress/
   ignore_errors: yes
 
 - name: Apply HPA
-  command: kubectl apply -f /kubernetes/hpa/
-  environment:
-    KUBECONFIG: /root/.kube/config
+  command: kubectl apply -f ../../kubernetes/hpa/
   ignore_errors: yes
 
 - name: Wait for deployments to be ready
   command: kubectl rollout status deployment/{{ item }} -n healthcare --timeout=300s
-  environment:
-    KUBECONFIG: /root/.kube/config
   loop:
     - vitals-generator
     - alert-engine

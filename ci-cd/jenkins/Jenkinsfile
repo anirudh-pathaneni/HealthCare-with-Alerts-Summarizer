@@ -157,23 +157,12 @@ pipeline {
             steps {
                 dir('infrastructure/ansible') {
                     script {
-                        // Build the ansible runner image (no cache to ensure fresh build)
-                        def ansibleRunnerImage = "ansible-runner:${APP_VERSION}"
-                        sh "docker build --no-cache -t ${ansibleRunnerImage} ."
-
-                        // Run Ansible in Docker with macOS-compatible networking
-                        sh """
-                            docker run --rm \
-                                -v /Users/anirudhpathaneni/.kube:/tmp/.kube:ro \
-                                -v /Users/anirudhpathaneni/.minikube:/Users/anirudhpathaneni/.minikube:ro \
-                                -v \${WORKSPACE}/infrastructure/kubernetes:/kubernetes:ro \
-                                ${ansibleRunnerImage} \
-                                sh -c 'cp /tmp/.kube/config /root/.kube/config && \
-                                       sed -i "s/127.0.0.1/host.docker.internal/g" /root/.kube/config && \
-                                       sed -i "/certificate-authority:/d" /root/.kube/config && \
-                                       sed -i "s/server:/insecure-skip-tls-verify: true\\n    server:/g" /root/.kube/config && \
-                                       ansible-playbook playbooks/backend.yml'
-                        """
+                        // Run Ansible directly from Jenkins agent (requires ansible installed on agent)
+                        // Update roles path for local execution
+                        sh '''
+                            export ANSIBLE_ROLES_PATH=./roles
+                            ansible-playbook -i inventory/hosts playbooks/backend.yml
+                        '''
                     }
                 }
             }

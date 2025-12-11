@@ -1,8 +1,8 @@
 # Ansible Inventory for Healthcare AIOps
-# Updated for local Minikube deployment via Jenkins
+# For local execution on Jenkins agent
 
 [kubernetes_masters]
 localhost ansible_connection=local
 
 [all:vars]
-ansible_python_interpreter=/usr/local/bin/python3
+ansible_python_interpreter=auto_silent
