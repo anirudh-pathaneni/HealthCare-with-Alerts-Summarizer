@@ -3,11 +3,12 @@ pipeline {
     agent any
 
     environment {
+        PATH="/Users/anirudhpathaneni/.pyenv/shims:/Users/anirudhpathaneni/.pyenv/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        PYENV_ROOT="/Users/anirudhpathaneni/.pyenv"
         DOCKER_REGISTRY = "docker.io"
         DOCKER_USERNAME = "5unnysunny"
         DOCKER_CREDENTIALS_ID = "docker-hub-credentials"
         APP_VERSION = "1.0.${env.BUILD_NUMBER}"
-        // Pre-built test image tags (built once, reused forever)
         TEST_IMAGE_LIGHT = "healthcare-test-light:latest"
         TEST_IMAGE_ML = "healthcare-test-ml:latest"
         TEST_IMAGE_NODE = "healthcare-test-node:latest"
@@ -153,6 +154,14 @@ pipeline {
             }
         }
 
+        stage("DEBUG PATH") {
+            steps {
+                sh "echo PATH=\$PATH"
+                sh "which ansible-playbook || echo 'ansible not found'"
+                sh "which python3"
+            }
+        }
+        
         stage('8. Deployment (Ansible)') {
             steps {
                 dir('infrastructure/ansible') {
