@@ -43,6 +43,18 @@ spec:
                   name: healthcare-secrets
                   key: ELASTICSEARCH_PASSWORD
                   optional: true
+            - name: MONGODB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: healthcare-secrets
+                  key: MONGODB_URI
+                  optional: true
+            - name: MONGODB_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: healthcare-secrets
+                  key: MONGODB_DATABASE
+                  optional: true
           resources:
             requests:
               cpu: "100m"
