@@ -24,7 +24,7 @@
   ignore_errors: yes
 
 - name: Wait for deployments to be ready
-  command: kubectl rollout status deployment/{{ item }} -n healthcare --timeout=300s
+  command: kubectl rollout status deployment/{{ item }} -n healthcare --timeout=240s
   loop:
     - vitals-generator
     - alert-engine

@@ -114,7 +114,11 @@ pipeline {
 
                         services_to_push.each { service ->
                             def imageName = "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${service}:${APP_VERSION}"
+                            // Push versioned tag
                             sh "docker push ${imageName}"
+                            // Also push latest
+                            sh "docker tag ${imageName} ${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${service}:latest"
+                            sh "docker push ${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${service}:latest"
                         }
 
                         def frontendImageName = "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/frontend:${APP_VERSION}"
@@ -151,14 +155,6 @@ pipeline {
                         sh 'docker-compose -f docker-compose.yml down --remove-orphans'
                     }
                 }
-            }
-        }
-
-        stage("DEBUG PATH") {
-            steps {
-                sh "echo PATH=\$PATH"
-                sh "which ansible-playbook || echo 'ansible not found'"
-                sh "which python3"
             }
         }
 
