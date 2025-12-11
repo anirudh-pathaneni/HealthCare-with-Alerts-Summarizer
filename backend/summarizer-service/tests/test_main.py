@@ -103,5 +103,6 @@ class TestTriggerSummary:
         )
         assert response.status_code == 200
         result = response.json()
-        assert "status" in result
-        assert "summary" in result
+        # API returns summary directly, not a status wrapper
+        assert "patient_id" in result
+        assert "text" in result or "ml_summary" in result
