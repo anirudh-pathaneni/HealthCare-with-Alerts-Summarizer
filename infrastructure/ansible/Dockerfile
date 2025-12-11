@@ -14,6 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /ansible
 
+# Create .kube directory for kubeconfig
+RUN mkdir -p /root/.kube
+
 # Copy ansible configuration
 COPY . .
 
