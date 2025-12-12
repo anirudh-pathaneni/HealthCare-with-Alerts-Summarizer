@@ -12,7 +12,7 @@ pipeline {
 
     triggers {
         // Run every 5 minutes for testing (change to 'H */6 * * *' for production)
-        cron('*/5 * * * *')
+        cron('H */6 * * *')
     }
 
     options {
@@ -219,7 +219,7 @@ EOF
                             pip3 install -r requirements.txt datasets accelerate huggingface_hub -q
 
                             export MODEL_NAME="${MODEL_NAME}"
-                            export NUM_EPOCHS=3
+                            export NUM_EPOCHS=1
                             export HF_TOKEN="${HF_TOKEN}"
 
                             python3 finetune.py || echo "Fine-tuning skipped or failed"
