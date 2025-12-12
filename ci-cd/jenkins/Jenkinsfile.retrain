@@ -34,27 +34,38 @@ pipeline {
         stage('Collect Training Data') {
             steps {
                 script {
-                    // Query medical logs from Elasticsearch
+                    // Query medical logs from Elasticsearch via port-forward
                     sh """
                         mkdir -p training_data
 
+                        # Start port-forward to Elasticsearch in background
+                        kubectl port-forward service/elasticsearch 9200:9200 -n ${KUBE_NAMESPACE} &
+                        PF_PID=\$!
+                        sleep 3
+
                         # Fetch medical vitals data
-                        curl -s '${ES_HOST}/medical-vitals-*/_search?size=500' \
-                            -H 'Content-Type: application/json' \
-                            -d '{"query": {"range": {"@timestamp": {"gte": "now-7d"}}}}' \
-                            > training_data/vitals.json || true
+                        curl -s 'http://localhost:9200/medical-vitals-*/_search?size=500' \\
+                            -H 'Content-Type: application/json' \\
+                            -d '{"query": {"range": {"@timestamp": {"gte": "now-7d"}}}}' \\
+                            > training_data/vitals.json || echo '{"hits":{"hits":[]}}' > training_data/vitals.json
 
                         # Fetch medical alerts data
-                        curl -s '${ES_HOST}/medical-alerts-*/_search?size=10000' \
-                            -H 'Content-Type: application/json' \
-                            -d '{"query": {"range": {"@timestamp": {"gte": "now-7d"}}}}' \
+                        curl -s 'http://localhost:9200/medical-alerts-*/_search?size=10000' \\
+                            -H 'Content-Type: application/json' \\
+                            -d '{"query": {"range": {"@timestamp": {"gte": "now-7d"}}}}' \\
                             > training_data/alerts.json || true
 
                         # Fetch medical summaries for reference
-                        curl -s '${ES_HOST}/medical-summaries-*/_search?size=5000' \
-                            -H 'Content-Type: application/json' \
-                            -d '{"query": {"range": {"@timestamp": {"gte": "now-30d"}}}}' \
+                        curl -s 'http://localhost:9200/medical-summaries-*/_search?size=5000' \\
+                            -H 'Content-Type: application/json' \\
+                            -d '{"query": {"range": {"@timestamp": {"gte": "now-30d"}}}}' \\
                             > training_data/summaries.json || true
+
+                        # Kill port-forward
+                        kill \$PF_PID 2>/dev/null || true
+
+                        # Show collected data
+                        echo "Collected vitals: \$(cat training_data/vitals.json | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get(\"hits\",{}).get(\"hits\",[])))'  2>/dev/null || echo 0) records"
                     """
                 }
             }
