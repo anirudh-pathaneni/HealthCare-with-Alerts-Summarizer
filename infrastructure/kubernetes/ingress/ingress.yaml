@@ -37,6 +37,13 @@ spec:
                 name: vitals-generator
                 port:
                   number: 8001
+          - path: /api/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: vitals-generator
+                port:
+                  number: 8001
           - path: /ws
             pathType: Prefix
             backend:
