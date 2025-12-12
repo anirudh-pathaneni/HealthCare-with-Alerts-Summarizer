@@ -12,13 +12,14 @@ def buildDockerImage(String serviceName, String buildContext) {
 }
 
 def pushDockerImage(String serviceName, String tag) {
-    sh "docker push ${env.DOCKER_REPO}/${serviceName}:${tag}"
+    // Push only latest tag (standardized)
     sh "docker tag ${env.DOCKER_REPO}/${serviceName}:${tag} ${env.DOCKER_REPO}/${serviceName}:latest"
     sh "docker push ${env.DOCKER_REPO}/${serviceName}:latest"
 }
 
 def deployToKubernetes(String serviceName, String namespace = 'healthcare') {
-    sh "kubectl set image deployment/${serviceName} ${serviceName}=${env.DOCKER_REPO}/${serviceName}:${env.BUILD_VERSION} -n ${namespace}"
+    // Use latest tag (matches K8s manifests)
+    sh "kubectl set image deployment/${serviceName} ${serviceName}=${env.DOCKER_REPO}/${serviceName}:latest -n ${namespace}"
     sh "kubectl rollout status deployment/${serviceName} -n ${namespace} --timeout=300s"
 }
 

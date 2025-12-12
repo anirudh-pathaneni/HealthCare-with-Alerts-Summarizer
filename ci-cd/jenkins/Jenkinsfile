@@ -105,36 +105,32 @@ pipeline {
         }
 
         stage('5. Docker Push') {
-    steps {
-        script {
-            withCredentials([usernamePassword(credentialsId: DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                sh "echo ${DOCKER_PASS} | docker login ${DOCKER_REGISTRY} -u ${DOCKER_USER} --password-stdin"
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh "echo ${DOCKER_PASS} | docker login ${DOCKER_REGISTRY} -u ${DOCKER_USER} --password-stdin"
 
-                def services_to_push = ['alert-engine', 'auth-service', 'summarizer-service', 'vitals-generator']
+                        def services_to_push = ['alert-engine', 'auth-service', 'summarizer-service', 'vitals-generator']
 
-                services_to_push.each { service ->
-                    def versionedImage = "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${service}:${APP_VERSION}"
-                    def latestImage = "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${service}:latest"
+                        services_to_push.each { service ->
+                            def versionedImage = "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${service}:${APP_VERSION}"
+                            def latestImage = "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${service}:latest"
 
-                    // Push versioned image
-                    sh "docker push ${versionedImage}"
+                            // Tag as latest and push only latest
+                            sh "docker tag ${versionedImage} ${latestImage}"
+                            sh "docker push ${latestImage}"
+                        }
 
-                    // Tag & push latest
-                    sh "docker tag ${versionedImage} ${latestImage}"
-                    sh "docker push ${latestImage}"
+                        // Frontend image - push only latest
+                        def frontendVersioned = "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/frontend:${APP_VERSION}"
+                        def frontendLatest = "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/frontend:latest"
+
+                        sh "docker tag ${frontendVersioned} ${frontendLatest}"
+                        sh "docker push ${frontendLatest}"
+                    }
                 }
-
-                // Frontend image
-                def frontendVersioned = "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/frontend:${APP_VERSION}"
-                def frontendLatest = "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/frontend:latest"
-
-                sh "docker push ${frontendVersioned}"
-                sh "docker tag ${frontendVersioned} ${frontendLatest}"
-                sh "docker push ${frontendLatest}"
             }
         }
-    }
-}
 
         stage('6. Local Agent Cleanup') {
             steps {

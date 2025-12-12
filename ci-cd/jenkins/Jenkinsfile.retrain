@@ -272,17 +272,27 @@ EOF
         stage('Log Deployment') {
             steps {
                 script {
-                    // Log deployment to Elasticsearch
+                    // Log deployment to Elasticsearch via port-forward
                     sh """
-                        curl -X POST '${ES_HOST}/system-deployment-\$(date +%Y.%m.%d)/_doc' \
-                            -H 'Content-Type: application/json' \
-                            -d '{
-                                "@timestamp": "'"\$(date -Iseconds)"'",
-                                "event": "model_retrain",
-                                "model_version": "${MODEL_VERSION}",
-                                "status": "success",
-                                "service": "summarizer-service"
-                            }' || true
+                        # Start port-forward
+                        kubectl port-forward service/elasticsearch 9200:9200 -n ${KUBE_NAMESPACE} &
+                        PF_PID=\$!
+                        sleep 3
+
+                        INDEX_DATE=\$(date +%Y.%m.%d)
+                        TIMESTAMP=\$(date -Iseconds)
+
+                        curl -X POST "http://localhost:9200/system-deployment-\${INDEX_DATE}/_doc" \\
+                            -H 'Content-Type: application/json' \\
+                            -d "{
+                                \\"@timestamp\\": \\"\${TIMESTAMP}\\",
+                                \\"event\\": \\"model_retrain\\",
+                                \\"model_version\\": \\"${MODEL_VERSION}\\",
+                                \\"status\\": \\"success\\",
+                                \\"service\\": \\"summarizer-service\\"
+                            }" || echo "Failed to log deployment"
+
+                        kill \$PF_PID 2>/dev/null || true
                     """
                 }
             }
