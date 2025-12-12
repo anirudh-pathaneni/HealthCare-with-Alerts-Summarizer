@@ -204,6 +204,7 @@ pipeline {
                     sh 'kubectl rollout status deployment/frontend -n healthcare --timeout=120s'
                     sh 'kubectl rollout status deployment/elasticsearch -n healthcare --timeout=120s'
                     sh 'kubectl rollout status deployment/kibana -n healthcare --timeout=120s'
+                    sh 'kubectl rollout status daemonset/filebeat -n healthcare --timeout=120s || echo "Filebeat DaemonSet not ready yet"'
                     echo "All deployments validated successfully."
                 }
             }

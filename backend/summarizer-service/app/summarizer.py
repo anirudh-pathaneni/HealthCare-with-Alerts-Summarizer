@@ -119,11 +119,6 @@ def format_alerts_section(alerts: List[Dict]) -> str:
     if not alerts:
         return "**Alerts:** No active alerts detected."
 
-    parts = [f"**Active Alerts ({len(alerts)}):**"]
-
-    critical = [a for a in alerts if a.get("severity") == "critical"]
-    warning = [a for a in alerts if a.get("severity") == "warning"]
-
     def get_alert_label(alert):
         """Get human-readable alert label from alert_type or vital_type."""
         alert_type = alert.get('alert_type') or alert.get('vital_type') or alert.get('type')
@@ -132,16 +127,42 @@ def format_alerts_section(alerts: List[Dict]) -> str:
             return alert_type.replace('_', ' ').title()
         return 'Alert'
 
-    if critical:
+    def get_alert_key(alert):
+        """Create a unique key for deduplication based on type and core message."""
+        label = get_alert_label(alert)
+        message = alert.get('message', '')
+        # Extract core part of message (without specific values for dedup)
+        # e.g., "Critical tachypnea: 31/min" -> "Critical tachypnea"
+        core_message = message.split(':')[0] if ':' in message else message[:50]
+        return f"{label}:{core_message}"
+
+    # Deduplicate alerts by type + core message, keeping the most recent (first in list)
+    seen_keys = set()
+    unique_critical = []
+    unique_warning = []
+
+    for alert in alerts:
+        key = get_alert_key(alert)
+        if key not in seen_keys:
+            seen_keys.add(key)
+            if alert.get("severity") == "critical":
+                unique_critical.append(alert)
+            elif alert.get("severity") == "warning":
+                unique_warning.append(alert)
+
+    total_unique = len(unique_critical) + len(unique_warning)
+    parts = [f"**Active Alerts ({total_unique}):**"]
+
+    if unique_critical:
         parts.append("\n🔴 CRITICAL:")
-        for alert in critical[:5]:
+        for alert in unique_critical[:5]:
             label = get_alert_label(alert)
             message = alert.get('message', 'No details')
             parts.append(f"  • {label}: {message}")
 
-    if warning:
+    if unique_warning:
         parts.append("\n🟡 WARNING:")
-        for alert in warning[:5]:
+        for alert in unique_warning[:5]:
             label = get_alert_label(alert)
             message = alert.get('message', 'No details')
             parts.append(f"  • {label}: {message}")
