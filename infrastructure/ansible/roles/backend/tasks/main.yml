@@ -22,12 +22,3 @@
 - name: Apply HPA
   command: kubectl apply -f ../../kubernetes/hpa/
   ignore_errors: yes
-
-- name: Wait for deployments to be ready
-  command: kubectl rollout status deployment/{{ item }} -n healthcare --timeout=180s
-  loop:
-    - vitals-generator
-    - alert-engine
-    - summarizer-service
-    - frontend
-  ignore_errors: yes

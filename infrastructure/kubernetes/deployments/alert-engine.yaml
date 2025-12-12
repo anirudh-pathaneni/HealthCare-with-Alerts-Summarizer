@@ -37,6 +37,8 @@ spec:
                   key: ELASTICSEARCH_URL
             - name: VITALS_SERVICE_URL
               value: "http://vitals-generator:8001"
+            - name: MONGODB_URL
+              value: "mongodb://mongodb:27017"
             - name: ELASTICSEARCH_PASSWORD
               valueFrom:
                 secretKeyRef:
