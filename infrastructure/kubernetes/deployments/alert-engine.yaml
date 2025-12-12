@@ -37,14 +37,22 @@ spec:
                   key: ELASTICSEARCH_URL
             - name: VITALS_SERVICE_URL
               value: "http://vitals-generator:8001"
-            - name: MONGODB_URL
-              value: "mongodb://mongodb:27017"
             - name: ELASTICSEARCH_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: healthcare-secrets
                   key: ELASTICSEARCH_PASSWORD
                   optional: true
+            - name: MONGODB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: healthcare-secrets
+                  key: MONGODB_URI
+            - name: MONGODB_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: healthcare-secrets
+                  key: MONGODB_DATABASE
           resources:
             requests:
               cpu: "100m"
