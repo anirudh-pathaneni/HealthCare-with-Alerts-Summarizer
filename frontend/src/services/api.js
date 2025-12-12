@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // In production (via Ingress), use relative paths. In development, use localhost ports.
 const isProduction = !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')
-
+// Test
 const API_BASE_URL = import.meta.env.VITE_API_URL || (isProduction ? '' : 'http://localhost:8001')
 const ALERTS_API_URL = import.meta.env.VITE_ALERTS_API_URL || (isProduction ? '' : 'http://localhost:8002')
 const SUMMARIZER_API_URL = import.meta.env.VITE_SUMMARIZER_API_URL || (isProduction ? '' : 'http://localhost:8003')
