@@ -15,7 +15,9 @@ pipeline {
     }
 
     stages {
-        stage('0. Build Test Images (if needed)') {
+        // Note: Jenkins automatically does "Declarative: Checkout SCM" before stages
+
+        stage('1. Build Test Images') {
             steps {
                 script {
                     // Build LIGHT test image (alert-engine, vitals-generator) - only if not exists
@@ -35,14 +37,6 @@ pipeline {
                     } else {
                         echo "ML test image already exists, skipping build."
                     }
-                }
-            }
-        }
-
-        stage('1. Checkout') {
-            steps {
-                script{
-                    checkout scm
                 }
             }
         }
