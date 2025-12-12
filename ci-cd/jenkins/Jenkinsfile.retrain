@@ -194,7 +194,7 @@ def prepare_training_data():
 if __name__ == '__main__':
     prepare_training_data()
 EOF
-                        python prepare_dataset.py
+                        python3 prepare_dataset.py
                     '''
                 }
             }
@@ -211,7 +211,7 @@ EOF
                             export NUM_EPOCHS=3
                             export HF_TOKEN="${HF_TOKEN}"
 
-                            python finetune.py || echo "Fine-tuning skipped or failed"
+                            python3 finetune.py || echo "Fine-tuning skipped or failed"
                         '''
                     }
                 }
