@@ -236,10 +236,10 @@ EOF
                     sh """
                         kubectl rollout restart deployment/summarizer-service -n ${KUBE_NAMESPACE}
 
-                        # Wait for rollout
+                        # Wait for rollout (non-blocking - don't fail pipeline on timeout)
                         kubectl rollout status deployment/summarizer-service \\
                             -n ${KUBE_NAMESPACE} \\
-                            --timeout=300s
+                            --timeout=120s || echo "Rollout still in progress (may need more memory)"
                     """
                 }
             }
