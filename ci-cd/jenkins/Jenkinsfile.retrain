@@ -7,12 +7,13 @@ pipeline {
         KUBE_NAMESPACE = 'healthcare'
         MODEL_NAME = '5unnySunny/medical-flan-t5-small-log-summarizer'
         ES_HOST = 'http://elasticsearch:9200'
-        MAX_TRAINING_SAMPLES = '100'  // Limit samples for faster training
+        TRAIN_SAMPLES = '1000'  // Synthetic training samples to generate
     }
 
     triggers {
-        // Run every 5 minutes for testing (change to 'H */6 * * *' for production)
-        cron('H */6 * * *')
+        // Manual trigger recommended, or weekly/monthly for production
+        // cron('H 2 * * 0')  // Every Sunday at 2am
+        cron('H */6 * * *')  // Current: every 6 hours (for testing)
     }
 
     options {
