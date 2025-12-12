@@ -39,17 +39,17 @@ VITAL_RANGES = {
     "respiratory_rate": {"min": 12, "max": 20, "warning_high": 24, "critical_high": 30}
 }
 
-# Sample patient data
+# Sample patient data - 70% critical/moderate to match training data distribution
 PATIENT_DATA = [
-    {"id": "P001", "name": "John Smith", "bed": "ICU-101", "age": 65, "gender": "Male", "condition": "stable"},
-    {"id": "P002", "name": "Sarah Johnson", "bed": "ICU-102", "age": 45, "gender": "Female", "condition": "moderate"},
+    {"id": "P001", "name": "John Smith", "bed": "ICU-101", "age": 65, "gender": "Male", "condition": "critical"},
+    {"id": "P002", "name": "Sarah Johnson", "bed": "ICU-102", "age": 45, "gender": "Female", "condition": "critical"},
     {"id": "P003", "name": "Michael Brown", "bed": "ICU-103", "age": 72, "gender": "Male", "condition": "critical"},
-    {"id": "P004", "name": "Emily Davis", "bed": "ICU-104", "age": 38, "gender": "Female", "condition": "stable"},
+    {"id": "P004", "name": "Emily Davis", "bed": "ICU-104", "age": 38, "gender": "Female", "condition": "critical"},
     {"id": "P005", "name": "Robert Wilson", "bed": "ICU-105", "age": 58, "gender": "Male", "condition": "moderate"},
-    {"id": "P006", "name": "Jennifer Martinez", "bed": "ICU-106", "age": 51, "gender": "Female", "condition": "stable"},
-    {"id": "P007", "name": "David Lee", "bed": "ICU-107", "age": 69, "gender": "Male", "condition": "stable"},
-    {"id": "P008", "name": "Lisa Anderson", "bed": "ICU-108", "age": 43, "gender": "Female", "condition": "critical"},
-    {"id": "P009", "name": "James Taylor", "bed": "ICU-109", "age": 55, "gender": "Male", "condition": "moderate"},
+    {"id": "P006", "name": "Jennifer Martinez", "bed": "ICU-106", "age": 51, "gender": "Female", "condition": "moderate"},
+    {"id": "P007", "name": "David Lee", "bed": "ICU-107", "age": 69, "gender": "Male", "condition": "moderate"},
+    {"id": "P008", "name": "Lisa Anderson", "bed": "ICU-108", "age": 43, "gender": "Female", "condition": "stable"},
+    {"id": "P009", "name": "James Taylor", "bed": "ICU-109", "age": 55, "gender": "Male", "condition": "stable"},
     {"id": "P010", "name": "Maria Garcia", "bed": "ICU-110", "age": 62, "gender": "Female", "condition": "stable"},
 ]
 
@@ -74,26 +74,26 @@ PHYSICIANS = [
 
 class VitalsGenerator:
     """Generates realistic medical vitals for simulated patients."""
-    
+
     def __init__(self):
         self.patients: Dict[str, Patient] = {}
         self.patient_states: Dict[str, Dict] = {}
         self._initialize_patients()
-    
+
     def _initialize_patients(self):
         """Initialize patient data with realistic vitals."""
         admission_base = datetime.now() - timedelta(days=10)
-        
+
         for i, data in enumerate(PATIENT_DATA):
             patient_id = data["id"]
             condition = data["condition"]
-            
+
             # Set base vitals based on patient condition
             self.patient_states[patient_id] = self._get_initial_state(condition)
-            
+
             vitals = self._generate_vitals(patient_id)
             severity = self._calculate_severity(vitals)
-            
+
             patient = Patient(
                 id=patient_id,
                 name=data["name"],
@@ -107,7 +107,7 @@ class VitalsGenerator:
                 alert_severity=severity
             )
             self.patients[patient_id] = patient
-    
+
     def _get_initial_state(self, condition: str) -> Dict:
         """Get initial vital parameters based on patient condition."""
         if condition == "critical":
@@ -158,36 +158,36 @@ class VitalsGenerator:
                 "resp_variance": 2,
                 "trend": "stable"
             }
-    
+
     def _generate_vitals(self, patient_id: str) -> VitalSigns:
         """Generate realistic vitals with natural variation."""
         state = self.patient_states[patient_id]
-        
+
         # Add some temporal variation (sine wave for natural rhythm)
         time_factor = math.sin(datetime.now().timestamp() / 60) * 0.3
-        
+
         heart_rate = int(state["hr_base"] + random.gauss(0, state["hr_variance"] / 2) + time_factor * 5)
         heart_rate = max(30, min(180, heart_rate))
-        
+
         spo2 = int(state["spo2_base"] + random.gauss(0, state["spo2_variance"] / 2))
         spo2 = max(70, min(100, spo2))
-        
+
         systolic = int(state["sys_base"] + random.gauss(0, state["sys_variance"] / 2))
         systolic = max(70, min(220, systolic))
-        
+
         diastolic = int(state["dias_base"] + random.gauss(0, state["dias_variance"] / 2))
         diastolic = max(40, min(130, diastolic))
-        
+
         # Ensure diastolic < systolic
         if diastolic >= systolic:
             diastolic = systolic - 20
-        
+
         temperature = round(state["temp_base"] + random.gauss(0, state["temp_variance"] / 2), 1)
         temperature = max(34.0, min(42.0, temperature))
-        
+
         respiratory = int(state["resp_base"] + random.gauss(0, state["resp_variance"] / 2))
         respiratory = max(6, min(40, respiratory))
-        
+
         return VitalSigns(
             heart_rate=heart_rate,
             spo2=spo2,
@@ -196,42 +196,42 @@ class VitalsGenerator:
             respiratory_rate=respiratory,
             timestamp=datetime.now().isoformat()
         )
-    
+
     def _calculate_severity(self, vitals: VitalSigns) -> str:
         """Calculate alert severity based on vitals."""
         critical_count = 0
         warning_count = 0
-        
+
         # Heart rate
         if vitals.heart_rate < 40 or vitals.heart_rate > 150:
             critical_count += 1
         elif vitals.heart_rate < 50 or vitals.heart_rate > 120:
             warning_count += 1
-        
+
         # SpO2
         if vitals.spo2 < 88:
             critical_count += 1
         elif vitals.spo2 < 92:
             warning_count += 1
-        
+
         # Blood pressure
         if vitals.blood_pressure["systolic"] > 180 or vitals.blood_pressure["systolic"] < 80:
             critical_count += 1
         elif vitals.blood_pressure["systolic"] > 140 or vitals.blood_pressure["systolic"] < 90:
             warning_count += 1
-        
+
         # Temperature
         if vitals.temperature > 39.0 or vitals.temperature < 35.0:
             critical_count += 1
         elif vitals.temperature > 38.0:
             warning_count += 1
-        
+
         # Respiratory
         if vitals.respiratory_rate > 30 or vitals.respiratory_rate < 8:
             critical_count += 1
         elif vitals.respiratory_rate > 24 or vitals.respiratory_rate < 10:
             warning_count += 1
-        
+
         if critical_count > 0:
             return "critical"
         elif warning_count >= 2:
@@ -239,21 +239,21 @@ class VitalsGenerator:
         elif warning_count == 1:
             return "info"
         return "normal"
-    
+
     def update_vitals(self, patient_id: str) -> Optional[Patient]:
         """Update vitals for a specific patient."""
         if patient_id not in self.patients:
             return None
-        
+
         vitals = self._generate_vitals(patient_id)
         severity = self._calculate_severity(vitals)
-        
+
         patient = self.patients[patient_id]
         patient.vitals = vitals
         patient.alert_severity = severity
-        
+
         return patient
-    
+
     def update_all_vitals(self) -> List[Patient]:
         """Update vitals for all patients."""
         updated = []
@@ -262,31 +262,31 @@ class VitalsGenerator:
             if patient:
                 updated.append(patient)
         return updated
-    
+
     def get_patient(self, patient_id: str) -> Optional[Patient]:
         """Get patient by ID."""
         return self.patients.get(patient_id)
-    
+
     def get_all_patients(self) -> List[Patient]:
         """Get all patients."""
         return list(self.patients.values())
-    
+
     def get_patient_vitals_history(self, patient_id: str, hours: int = 1) -> List[VitalSigns]:
         """Generate historical vitals data for a patient."""
         if patient_id not in self.patients:
             return []
-        
+
         history = []
         now = datetime.now()
         interval_minutes = 1
         total_points = (hours * 60) // interval_minutes
-        
+
         state = self.patient_states[patient_id]
-        
+
         for i in range(total_points):
             timestamp = now - timedelta(minutes=i * interval_minutes)
             time_factor = math.sin(timestamp.timestamp() / 60) * 0.3
-            
+
             vitals = VitalSigns(
                 heart_rate=int(state["hr_base"] + random.gauss(0, state["hr_variance"]) + time_factor * 5),
                 spo2=int(state["spo2_base"] + random.gauss(0, state["spo2_variance"])),
@@ -299,7 +299,7 @@ class VitalsGenerator:
                 timestamp=timestamp.isoformat()
             )
             history.append(vitals)
-        
+
         return list(reversed(history))
 
 

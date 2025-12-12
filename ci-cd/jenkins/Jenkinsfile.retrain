@@ -35,7 +35,7 @@ pipeline {
         stage('Collect Training Data') {
             steps {
                 script {
-                    // Query medical logs from Elasticsearch via port-forward
+                    // Query medical vitals from Elasticsearch via port-forward
                     sh """
                         mkdir -p training_data
 
@@ -44,23 +44,11 @@ pipeline {
                         PF_PID=\$!
                         sleep 3
 
-                        # Fetch medical vitals data
-                        curl -s 'http://localhost:9200/medical-vitals-*/_search?size=500' \\
+                        # Fetch medical vitals data (5000 records for diverse training)
+                        curl -s 'http://localhost:9200/medical-vitals-*/_search?size=5000' \\
                             -H 'Content-Type: application/json' \\
                             -d '{"query": {"range": {"@timestamp": {"gte": "now-7d"}}}}' \\
                             > training_data/vitals.json || echo '{"hits":{"hits":[]}}' > training_data/vitals.json
-
-                        # Fetch medical alerts data
-                        curl -s 'http://localhost:9200/medical-alerts-*/_search?size=10000' \\
-                            -H 'Content-Type: application/json' \\
-                            -d '{"query": {"range": {"@timestamp": {"gte": "now-7d"}}}}' \\
-                            > training_data/alerts.json || true
-
-                        # Fetch medical summaries for reference
-                        curl -s 'http://localhost:9200/medical-summaries-*/_search?size=5000' \\
-                            -H 'Content-Type: application/json' \\
-                            -d '{"query": {"range": {"@timestamp": {"gte": "now-30d"}}}}' \\
-                            > training_data/summaries.json || true
 
                         # Kill port-forward
                         kill \$PF_PID 2>/dev/null || true
@@ -78,11 +66,12 @@ pipeline {
                     sh '''
                         pip3 install -r requirements.txt -q
 
-                        # Copy training data to expected location
+                        # Copy training data from workspace
                         mkdir -p training_data
                         cp ../../training_data/vitals.json training_data/ || true
 
-                        # Run prepare_dataset.py from repo
+                        # Process ES vitals into training format
+                        export MAX_TRAINING_SAMPLES="${TRAIN_SAMPLES}"
                         python3 prepare_dataset.py || true
                     '''
                 }
