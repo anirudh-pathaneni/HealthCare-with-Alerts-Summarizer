@@ -3,39 +3,37 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    background: var(--bg-primary);
     padding: 20px;
+    position: relative;
+    overflow: hidden;
 }
 
-.login-loader {
-    text-align: center;
-    color: #94a3b8;
-}
-
-.login-loader .spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid rgba(255, 255, 255, 0.1);
-    border-top-color: #06b6d4;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 16px;
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
+.login-page::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.15), transparent 60%);
+    animation: spin 60s linear infinite;
+    pointer-events: none;
 }
 
 .login-box {
     width: 100%;
-    max-width: 400px;
-    background: rgba(30, 41, 59, 0.9);
-    border-radius: 16px;
-    padding: 40px;
-    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    max-width: 420px;
+    background: var(--bg-card);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: var(--radius-xl);
+    padding: 48px;
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--border-color);
+    position: relative;
+    z-index: 1;
+    animation: fadeIn 0.5s ease-out;
 }
 
 .login-header {
@@ -44,14 +42,15 @@
 }
 
 .logo {
-    width: 70px;
-    height: 70px;
-    background: linear-gradient(135deg, #06b6d4, #8b5cf6);
+    width: 72px;
+    height: 72px;
+    background: var(--primary-gradient);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 16px;
+    margin: 0 auto 20px;
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
 }
 
 .logo-icon {
@@ -61,90 +60,55 @@
 }
 
 .login-header h1 {
-    font-size: 24px;
-    font-weight: 700;
-    color: #f1f5f9;
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--text-primary);
     margin: 0 0 8px 0;
+    letter-spacing: -0.02em;
 }
 
 .login-header p {
     font-size: 14px;
-    color: #94a3b8;
+    color: var(--text-secondary);
     margin: 0;
-}
-
-.login-form {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-
-.error-message {
-    background: rgba(239, 68, 68, 0.15);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: #f87171;
-    padding: 12px 16px;
-    border-radius: 8px;
-    font-size: 14px;
-    text-align: center;
-}
-
-.form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.form-group label {
-    font-size: 14px;
-    font-weight: 500;
-    color: #94a3b8;
 }
 
 .form-group input {
     width: 100%;
     padding: 14px 16px;
-    background: rgba(15, 23, 42, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    color: #f1f5f9;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    color: var(--text-primary);
     font-size: 16px;
-    transition: border-color 0.2s, box-shadow 0.2s;
-    box-sizing: border-box;
-}
-
-.form-group input::placeholder {
-    color: #64748b;
+    transition: all var(--transition-fast);
 }
 
 .form-group input:focus {
     outline: none;
-    border-color: #06b6d4;
-    box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.2);
-}
-
-.form-group input:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
+    border-color: var(--accent-indigo);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .login-btn {
     width: 100%;
     padding: 14px 24px;
-    background: linear-gradient(135deg, #06b6d4, #8b5cf6);
+    background: var(--primary-gradient);
     border: none;
-    border-radius: 8px;
+    border-radius: var(--radius-full);
     color: white;
     font-size: 16px;
     font-weight: 600;
     cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s;
-    margin-top: 8px;
+    transition: all var(--transition-fast);
+    margin-top: 12px;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
 .login-btn:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 10px 25px rgba(6, 182, 212, 0.3);
+    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.5);
 }
 
 .login-btn:active:not(:disabled) {

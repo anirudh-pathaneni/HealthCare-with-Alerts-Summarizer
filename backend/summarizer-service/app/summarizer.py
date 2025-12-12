@@ -98,7 +98,10 @@ def generate_ml_summary(input_text: str) -> str:
             min_length=20,
             num_beams=4,
             length_penalty=1.0,
-            early_stopping=True
+            early_stopping=True,
+            repetition_penalty=2.5,       # Penalize repeated tokens
+            no_repeat_ngram_size=3,       # Prevent 3-gram repetition
+            do_sample=False               # Deterministic output with beam search
         )
 
         summary = tokenizer.decode(outputs[0], skip_special_tokens=True)
