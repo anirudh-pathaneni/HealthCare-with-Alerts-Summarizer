@@ -304,12 +304,10 @@ EOF
 
     post {
         success {
-            echo "Model retrained and deployed successfully: ${MODEL_VERSION}"
-            slackSend(color: 'good', message: "Summarizer model ${MODEL_VERSION} retrained and deployed!")
+            echo "✅ Model retrained and deployed successfully: ${MODEL_VERSION}"
         }
         failure {
-            echo 'Retraining pipeline failed!'
-            slackSend(color: 'danger', message: "Summarizer model retraining failed!")
+            echo '❌ Retraining pipeline failed!'
         }
         always {
             cleanWs()
