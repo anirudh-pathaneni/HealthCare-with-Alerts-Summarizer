@@ -165,7 +165,22 @@ pipeline {
             }
         }
 
-        stage('8. Deployment (Ansible)') {
+        stage('8. Enable Minikube Addons') {
+            steps {
+                script {
+                    echo "Enabling Minikube addons for HPA and Ingress..."
+                    // Enable metrics-server for HPA to get CPU/memory metrics
+                    sh 'minikube addons enable metrics-server || true'
+                    // Enable ingress controller for Ingress resources
+                    sh 'minikube addons enable ingress || true'
+                    // Wait for ingress controller to be ready
+                    sh 'kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=120s || true'
+                    echo "Minikube addons enabled."
+                }
+            }
+        }
+
+        stage('9. Deployment (Ansible)') {
             steps {
                 dir('infrastructure/ansible') {
                     script {
@@ -179,7 +194,7 @@ pipeline {
             }
         }
 
-        stage('9. Post-Deployment Validation') {
+        stage('10. Post-Deployment Validation') {
             steps {
                 script {
                     echo "Validating Kubernetes deployments..."
