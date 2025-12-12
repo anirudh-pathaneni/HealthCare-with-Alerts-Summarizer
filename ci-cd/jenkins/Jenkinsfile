@@ -137,6 +137,9 @@ pipeline {
                 script {
                     sh 'chmod +x cleanup.sh'
                     sh './cleanup.sh ${DOCKER_USERNAME} ${APP_VERSION}'
+
+                    // Clean up dangling images
+                    sh 'docker image prune -f || true'
                 }
             }
         }
