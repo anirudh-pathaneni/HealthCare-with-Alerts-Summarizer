@@ -100,8 +100,9 @@ pipeline {
             steps {
                 script {
                     // Restart pods to pick up the updated model from HuggingFace
+                    // Using || true to ensure pipeline continues even if this fails
                     sh """
-                        kubectl rollout restart deployment/summarizer-service -n ${KUBE_NAMESPACE}
+                        kubectl rollout restart deployment/summarizer-service -n ${KUBE_NAMESPACE} || true
 
                         # Wait for rollout (non-blocking - don't fail pipeline on timeout)
                         kubectl rollout status deployment/summarizer-service \\

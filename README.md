@@ -1,6 +1,6 @@
 # AIOps Healthcare Monitoring System
 
-A complete multi-service healthcare monitoring platform with AI-powered summarization, real-time vitals monitoring, and comprehensive DevOps infrastructure.
+An AIOps framework for self-learning log summarization in a healthcare monitoring system. This project implements a complete DevOps/MLOps pipeline with AI-powered clinical summarization, real-time patient vitals monitoring, and automated model retraining.
 
 ## 🏗️ Architecture Overview
 
@@ -17,20 +17,22 @@ A complete multi-service healthcare monitoring platform with AI-powered summariz
 ┌───────▼───────┐         ┌───────▼───────┐         ┌───────▼───────┐
 │ Vitals Gen    │         │ Alert Engine  │         │  Summarizer   │
 │ Service       │────────▶│ Service       │────────▶│  Service      │
-│ (Port 8001)   │         │ (Port 8002)   │         │  (Port 8003)  │
+│ (Port 8001)   │         │ (Port 8004)   │         │  (Port 8003)  │
 └───────┬───────┘         └───────┬───────┘         └───────┬───────┘
         │                         │                         │
+        │                         │              ┌──────────┴──────────┐
+        │                         │              │  Flan-T5 Model      │
+        │                         │              │  (HuggingFace Hub)  │
+        │                         │              └─────────────────────┘
         └─────────────────────────┼─────────────────────────┘
                                   │
 ┌─────────────────────────────────▼───────────────────────────────────────────┐
-│                           Elasticsearch Cluster                              │
-│  ┌───────────────────────────┐    ┌───────────────────────────────────────┐ │
-│  │   Medical Indices         │    │   System Indices                      │ │
-│  │   • medical-vitals-*      │    │   • system-api-*                      │ │
-│  │   • medical-alerts-*      │    │   • system-k8s-*                      │ │
-│  │   • medical-events-*      │    │   • system-deployment-*               │ │
-│  │   • medical-summaries-*   │    │                                       │ │
-│  └───────────────────────────┘    └───────────────────────────────────────┘ │
+│                           ELK Stack                                          │
+│  ┌─────────────────────┐ ┌─────────────────────┐ ┌────────────────────────┐ │
+│  │   Elasticsearch     │ │     Logstash        │ │       Kibana           │ │
+│  │   (Port 9200)       │ │     (Port 5044)     │ │       (Port 5601)      │ │
+│  └─────────────────────┘ └─────────────────────┘ └────────────────────────┘ │
+│  Indices: medical-vitals-*, medical-alerts-*, system-deployment-*           │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -38,37 +40,47 @@ A complete multi-service healthcare monitoring platform with AI-powered summariz
 
 ```
 healthcare-aiops/
-├── frontend/                    # React application
+├── backend/                         # FastAPI microservices
+│   ├── vitals-generator/           # Patient vitals simulation service
+│   ├── alert-engine/               # Clinical alert detection service
+│   ├── auth-service/               # JWT authentication service
+│   └── summarizer-service/         # AI-powered summarization
+│       ├── app/summarizer.py       # Flan-T5 inference engine
+│       ├── finetune.py             # Model training script
+│       └── prepare_dataset.py      # Training data preparation
+│
+├── frontend/                        # React dashboard application
 │   ├── src/
-│   │   ├── components/         # Reusable UI components
-│   │   ├── pages/              # Dashboard & Patient Details
-│   │   ├── services/           # API clients
-│   │   └── App.jsx
+│   │   ├── components/             # Reusable UI components
+│   │   ├── pages/                  # Dashboard & Patient Details
+│   │   └── services/               # API clients
 │   ├── Dockerfile
-│   └── package.json
-│
-├── backend/                     # FastAPI microservices
-│   ├── vitals-generator/       # Vitals simulation service
-│   ├── alert-engine/           # Clinical alert detection
-│   ├── summarizer-service/     # AI summarization (DistilBART)
-│   └── shared/                 # Common utilities
-│
-├── infrastructure/
-│   ├── docker/                 # Dockerfiles
-│   ├── kubernetes/             # K8s manifests
-│   │   ├── deployments/
-│   │   ├── services/
-│   │   ├── ingress/
-│   │   └── hpa/
-│   ├── ansible/                # Provisioning roles
-│   │   ├── roles/
-│   │   └── playbooks/
-│   └── elk/                    # ELK configuration
+│   └── nginx.conf
 │
 ├── ci-cd/
-│   └── jenkins/                # Pipeline definitions
+│   ├── jenkins/
+│   │   ├── Jenkinsfile             # Main CI/CD pipeline (10 stages)
+│   │   └── Jenkinsfile.retrain     # MLOps retraining pipeline
+│   └── docker/                     # Test base images
 │
-├── docker-compose.yml          # Local development stack
+├── infrastructure/
+│   ├── ansible/
+│   │   ├── playbooks/              # Deployment playbooks
+│   │   └── roles/                  # Modular roles
+│   │       ├── backend/            # App deployment templates
+│   │       ├── elk/                # ELK Stack setup
+│   │       ├── jenkins/            # CI/CD infrastructure
+│   │       ├── kubernetes/         # K8s base resources
+│   │       └── vault/              # Secrets management
+│   ├── kubernetes/
+│   │   ├── deployments/            # Service manifests
+│   │   ├── hpa/                    # Autoscaling (3 HPAs)
+│   │   ├── ingress/                # External traffic routing
+│   │   ├── secrets/                # Credentials management
+│   │   └── configmaps/             # Application configuration
+│   └── elk/                        # Logstash configuration
+│
+├── docker-compose.yml              # Local development & testing
 └── README.md
 ```
 
@@ -77,8 +89,9 @@ healthcare-aiops/
 ### Prerequisites
 - Docker & Docker Compose
 - Node.js 18+
-- Python 3.10+
-- Kubernetes cluster (for production)
+- Python 3.11+
+- Minikube or Kubernetes cluster (for production)
+- kubectl and Ansible
 
 ### Local Development
 
@@ -93,27 +106,22 @@ docker-compose up -d
 # Access services:
 # - Frontend:      http://localhost:3000
 # - Vitals API:    http://localhost:8001
-# - Alerts API:    http://localhost:8002
+# - Alerts API:    http://localhost:8004
 # - Summarizer:    http://localhost:8003
 # - Kibana:        http://localhost:5601
 # - Elasticsearch: http://localhost:9200
 ```
 
-### Frontend Development
+### Kubernetes Deployment
 
 ```bash
-cd frontend
-npm install
-npm run dev
-```
+# Deploy using Ansible
+cd infrastructure/ansible
+ansible-playbook -i inventory/hosts playbooks/backend.yml
 
-### Backend Development
-
-```bash
-# Each service
-cd backend/<service-name>
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port <port>
+# Verify deployments
+kubectl get deployments -n healthcare
+kubectl get hpa -n healthcare
 ```
 
 ## 🏥 Features
@@ -126,7 +134,7 @@ uvicorn app.main:app --reload --port <port>
 ### Real-time Vitals Streaming
 - Heart Rate, SpO₂, Blood Pressure, Temperature, Respiratory Rate
 - WebSocket-based live updates
-- Historical trend charts (Recharts)
+- Historical trend visualization
 
 ### Clinical Alert Engine
 - **Tachycardia**: HR > 100 bpm
@@ -137,147 +145,130 @@ uvicorn app.main:app --reload --port <port>
 - **Sensor Disconnection**: Missing vitals detection
 
 ### AI-Powered Summaries
-- DistilBART/T5-small transformer model
+- Custom fine-tuned Flan-T5 transformer model
+- Model hosted on HuggingFace Hub: `5unnySunny/medical-flan-t5-small-log-summarizer`
+- Combines ML-generated summaries with clinical alerts
 - Periodic summarization of patient conditions
-- Reads ONLY from `medical-*` Elasticsearch indices
-- Version-tracked model updates
 
-### Auto-Retraining Pipeline
-- Collects new medical logs automatically
-- Fine-tunes transformer model
-- Builds new Docker image
-- Kubernetes rolling update deployment
+## 🔧 CI/CD Pipeline
 
-## 📊 Dual ELK Architecture
+### Main Pipeline (Jenkinsfile) - 10 Stages:
+1. **Build Test Images**: Creates Docker images for running tests
+2. **Backend Unit Tests**: Parallel pytest execution for all services
+3. **Build Frontend**: Production React bundle via npm
+4. **Docker Build**: Versioned images (1.0.${BUILD_NUMBER})
+5. **Docker Push**: Push to Docker Hub registry
+6. **Local Agent Cleanup**: Remove old images
+7. **Docker Compose Integration Test**: Full stack health checks
+8. **Enable Minikube Addons**: metrics-server and ingress
+9. **Deployment (Ansible)**: Deploy to Kubernetes via playbooks
+10. **Post-Deployment Validation**: Verify rollout status
 
-### Medical Indices (for AI summarization)
+### MLOps Retrain Pipeline (Jenkinsfile.retrain):
+1. **Collect Training Data**: Query Elasticsearch for recent vitals (7 days)
+2. **Prepare Dataset**: Generate synthetic training samples
+3. **Fine-tune Model**: Train Flan-T5 and push to HuggingFace Hub
+4. **Restart Summarizer Service**: Rolling deployment
+5. **Verify New Model**: Health checks
+6. **Log Deployment**: Record event in Elasticsearch
+
+**Trigger**: Every 6 hours (configurable) or manual
+
+## ☸️ Kubernetes Resources
+
+### Horizontal Pod Autoscaling (HPA)
+Three HPAs configured in `infrastructure/kubernetes/hpa/hpa.yaml`:
+
+| Service | Min | Max | CPU Target | Memory Target |
+|---------|-----|-----|------------|---------------|
+| summarizer-service | 1 | 10 | 70% | 80% |
+| vitals-generator | 2 | 5 | 70% | - |
+| alert-engine | 2 | 5 | 70% | - |
+
+### Other Resources
+- **Deployments**: All backend services + frontend
+- **StatefulSets**: Elasticsearch for persistent storage
+- **Services**: ClusterIP for internal DNS
+- **Ingress**: External HTTP traffic routing
+- **Secrets**: Docker Hub credentials, application secrets
+- **DaemonSet**: Filebeat for log collection
+
+## 📊 ELK Stack Integration
+
+### Elasticsearch Indices
 | Index Pattern | Description |
 |--------------|-------------|
 | `medical-vitals-*` | Patient vital signs |
 | `medical-alerts-*` | Clinical alerts |
-| `medical-events-*` | Medical events |
-| `medical-summaries-*` | AI-generated summaries |
+| `system-deployment-*` | Model retraining events |
 
-### System Indices (for DevOps observability)
-| Index Pattern | Description |
-|--------------|-------------|
-| `system-api-*` | API request logs |
-| `system-k8s-*` | Kubernetes events |
-| `system-deployment-*` | Deployment logs |
+### Log Collection
+- **Filebeat DaemonSet**: Collects logs from all Kubernetes nodes
+- **Logstash**: Processes and routes log data (medical.conf)
+- **Kibana**: Visualization dashboards
 
-## ☸️ Kubernetes Deployment
+## 🔐 Advanced Features
 
-```bash
-# Apply all manifests
-kubectl apply -f infrastructure/kubernetes/
+### Vault Integration
+Ansible role for secrets management located in `infrastructure/ansible/roles/vault/`:
+- Kubernetes Secrets for application credentials
+- Docker Hub registry credentials (regcred)
 
-# Verify deployments
-kubectl get deployments -n healthcare
+### Modular Ansible Roles
+Five roles for separation of concerns:
+- `backend/` - Application deployment with Jinja2 templating
+- `elk/` - Elasticsearch, Logstash, Kibana setup
+- `jenkins/` - CI/CD infrastructure
+- `kubernetes/` - Namespace and base resources
+- `vault/` - Secrets management
 
-# Check HPA status
-kubectl get hpa -n healthcare
-```
-
-## 🔧 CI/CD Pipeline
-
-### Jenkins Pipelines
-
-1. **Main Pipeline** (`Jenkinsfile`)
-   - Build all services
-   - Run unit tests
-   - Build & push Docker images
-   - Deploy to Kubernetes
-
-2. **Retrain Pipeline** (`Jenkinsfile.retrain`)
-   - Collect medical logs
-   - Fine-tune summarizer model
-   - Build new model image
-   - Rolling update deployment
-
-### Triggering Pipelines
-
-```bash
-# Manual trigger
-curl -X POST http://jenkins:8080/job/healthcare-aiops/build
-
-# Scheduled (cron): Every 6 hours for retraining
-```
-
-## 🔐 Secrets Management
-
-Using HashiCorp Vault:
-
-```bash
-# Store secrets
-vault kv put secret/healthcare-aiops \
-    elasticsearch_password=<password> \
-    docker_registry_token=<token>
-
-# Read in application
-export ELASTICSEARCH_PASSWORD=$(vault kv get -field=elasticsearch_password secret/healthcare-aiops)
-```
+### Zero-Downtime Deployments
+- Kubernetes rolling updates
+- APP_VERSION injected via Ansible templates
+- Rollout status validation in Jenkins
 
 ## 📝 API Reference
 
 ### Vitals Generator Service (8001)
-
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/health` | GET | Health check |
 | `/api/patients` | GET | List all patients |
 | `/api/patients/{id}/vitals` | GET | Get patient vitals |
-| `/ws/vitals/{patient_id}` | WS | Real-time vitals stream |
 
-### Alert Engine Service (8002)
-
+### Alert Engine Service (8004)
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/health` | GET | Health check |
 | `/api/alerts` | GET | Get all active alerts |
 | `/api/alerts/{patient_id}` | GET | Get patient alerts |
 
 ### Summarizer Service (8003)
-
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/health` | GET | Health check |
 | `/api/summaries` | GET | Get all summaries |
 | `/api/summaries/{patient_id}` | GET | Get patient summary |
 | `/api/model/info` | GET | Model version info |
-| `/api/model/trigger-summary` | POST | Trigger manual summary |
-
-## 🔧 Ansible Provisioning
-
-```bash
-cd infrastructure/ansible
-
-# Full infrastructure setup
-ansible-playbook playbooks/site.yml -i inventory/hosts
-
-# Individual components
-ansible-playbook playbooks/elk.yml
-ansible-playbook playbooks/kubernetes.yml
-ansible-playbook playbooks/jenkins.yml
-```
-
-## 📈 Scaling
-
-The summarizer service uses HPA for automatic scaling:
-
-```yaml
-minReplicas: 2
-maxReplicas: 10
-targetCPUUtilizationPercentage: 70
-```
 
 ## 🧪 Testing
 
 ```bash
-# Backend tests
-cd backend/vitals-generator && pytest tests/ -v
-cd backend/alert-engine && pytest tests/ -v
-cd backend/summarizer-service && pytest tests/ -v
+# Backend tests (using pre-built Docker images)
+docker run --rm -v $PWD/backend/alert-engine:/app healthcare-test-light python -m pytest tests/ -v
+docker run --rm -v $PWD/backend/summarizer-service:/app healthcare-test-ml python -m pytest tests/ -v
+docker run --rm -v $PWD/backend/vitals-generator:/app healthcare-test-light python -m pytest tests/ -v
 
-# Frontend tests
-cd frontend && npm test
+# Or locally
+cd backend/<service-name>
+pip install -r requirements.txt
+pytest tests/ -v
 ```
+
+## 👥 Authors
+
+- Lokesh A - IMT2022577
+- Anirudh P - IMT2022505
 
 ## 📄 License
 
