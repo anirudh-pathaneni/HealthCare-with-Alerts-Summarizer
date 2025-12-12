@@ -107,7 +107,9 @@ const Login = () => {
                     </button>
                 </form>
 
-                {/* Footer removed for production */}
+                <div className="login-footer">
+                    <p>Healthcare AIOps Administration</p>
+                </div>
             </div>
         </div>
     );
