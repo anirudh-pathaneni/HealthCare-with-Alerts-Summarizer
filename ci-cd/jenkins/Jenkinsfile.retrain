@@ -7,7 +7,7 @@ pipeline {
         KUBE_NAMESPACE = 'healthcare'
         MODEL_NAME = '5unnySunny/medical-flan-t5-small-log-summarizer'
         ES_HOST = 'http://elasticsearch:9200'
-        MAX_TRAINING_SAMPLES = '50'  // Limit samples for faster training
+        MAX_TRAINING_SAMPLES = '100'  // Limit samples for faster training
     }
 
     triggers {
@@ -75,137 +75,14 @@ pipeline {
             steps {
                 dir('backend/summarizer-service') {
                     sh '''
-                        pip3 install -r requirements.txt
+                        pip3 install -r requirements.txt -q
 
-                        # Create training script matching the original training format
-                        cat > prepare_dataset.py << 'EOF'
-import json
-import os
-import random
+                        # Copy training data to expected location
+                        mkdir -p training_data
+                        cp ../../training_data/vitals.json training_data/ || true
 
-def generate_alerts(v):
-    """Generate alerts based on vitals - matches original training logic."""
-    alerts = []
-
-    if v.get("spo2", 100) < 90:
-        alerts.append("severe hypoxia")
-    elif v.get("spo2", 100) < 94:
-        alerts.append("low oxygen saturation")
-
-    if v.get("hr", 70) > 140:
-        alerts.append("tachycardia")
-    elif v.get("hr", 70) < 50:
-        alerts.append("bradycardia")
-
-    if v.get("temp", 37) > 39.0:
-        alerts.append("high fever")
-    elif v.get("temp", 37) > 38.0:
-        alerts.append("fever")
-
-    bp_sys = v.get("bp_systolic", v.get("systolic", 120))
-    bp_dia = v.get("bp_diastolic", v.get("diastolic", 80))
-    if bp_sys > 180 or bp_dia > 120:
-        alerts.append("hypertensive crisis")
-
-    if v.get("resp", v.get("respiratory_rate", 16)) > 28:
-        alerts.append("rapid breathing")
-    elif v.get("resp", v.get("respiratory_rate", 16)) < 12:
-        alerts.append("slow respiration")
-
-    return alerts
-
-def generate_summary(patient_id, conditions):
-    """Generate summary text - matches original training logic."""
-    if not conditions:
-        return (
-            f"Patient {patient_id} remained stable with no critical abnormalities "
-            f"detected during the monitoring period."
-        )
-
-    conditions = list(set(conditions))
-    issues = ", ".join(conditions)
-
-    return (
-        f"Patient {patient_id} experienced {issues} during the monitoring period "
-        f"and requires continued medical observation."
-    )
-
-def prepare_training_data():
-    """Prepare training data from collected medical vitals."""
-    training_pairs = []
-
-    vitals_file = '../../training_data/vitals.json'
-
-    if not os.path.exists(vitals_file):
-        print("No vitals data found")
-        return 0
-
-    with open(vitals_file, 'r') as f:
-        vitals_data = json.load(f)
-
-    hits = vitals_data.get('hits', {}).get('hits', [])
-    print(f"Found {len(hits)} vitals records")
-
-    # Group vitals by patient_id
-    patient_vitals = {}
-    for hit in hits:
-        source = hit.get('_source', {})
-        patient_id = source.get('patient_id', 'Unknown')
-
-        if patient_id not in patient_vitals:
-            patient_vitals[patient_id] = []
-        patient_vitals[patient_id].append(source)
-
-    # Create training pairs - group 5 vitals readings per training sample
-    for patient_id, vitals_list in patient_vitals.items():
-        # Process in groups of 5
-        for i in range(0, len(vitals_list), 5):
-            group = vitals_list[i:i+5]
-            if len(group) < 2:  # Need at least 2 readings
-                continue
-
-            # Build input text (multiple vitals readings)
-            logs = []
-            all_alerts = []
-            for v in group:
-                hr = v.get('heart_rate', v.get('hr', 72))
-                spo2 = v.get('spo2', v.get('oxygen_saturation', 98))
-                temp = v.get('temperature', v.get('temp', 37.0))
-                bp_sys = v.get('bp_systolic', v.get('systolic', 120))
-                bp_dia = v.get('bp_diastolic', v.get('diastolic', 80))
-                resp = v.get('respiratory_rate', v.get('resp', 16))
-
-                log = f"Patient {patient_id}: HR={hr}, SpO2={spo2}, Temp={temp}, BP={bp_sys}/{bp_dia}, Resp={resp}."
-                logs.append(log)
-
-                # Generate alerts for this reading
-                alerts = generate_alerts({
-                    'hr': hr, 'spo2': spo2, 'temp': temp,
-                    'bp_systolic': bp_sys, 'bp_diastolic': bp_dia,
-                    'resp': resp
-                })
-                all_alerts.extend(alerts)
-
-            # Build output text (summary)
-            summary = generate_summary(patient_id, all_alerts)
-
-            training_pairs.append({
-                'input': ' '.join(logs),
-                'summary': summary
-            })
-
-    # Save prepared dataset
-    os.makedirs('training_output', exist_ok=True)
-    with open('training_output/train_dataset.json', 'w') as f:
-        json.dump(training_pairs, f, indent=2)
-
-    print(f"Prepared {len(training_pairs)} training examples")
-    return len(training_pairs)
-
-if __name__ == '__main__':
-    prepare_training_data()
-EOF
-                        python3 prepare_dataset.py
+                        # Run prepare_dataset.py from repo
+                        python3 prepare_dataset.py || true
                     '''
                 }
             }
@@ -219,7 +96,7 @@ EOF
                             pip3 install -r requirements.txt datasets accelerate huggingface_hub -q
 
                             export MODEL_NAME="${MODEL_NAME}"
-                            export NUM_EPOCHS=1
+                            export NUM_EPOCHS=3
                             export HF_TOKEN="${HF_TOKEN}"
 
                             python3 finetune.py || echo "Fine-tuning skipped or failed"
