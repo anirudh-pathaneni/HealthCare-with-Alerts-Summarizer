@@ -184,10 +184,10 @@ pipeline {
             steps {
                 script {
                     echo "Validating Kubernetes deployments..."
-                    sh 'kubectl rollout status deployment/alert-engine -n healthcare --timeout=60s'
-                    sh 'kubectl rollout status deployment/summarizer-service -n healthcare --timeout=60s'
-                    sh 'kubectl rollout status deployment/vitals-generator -n healthcare --timeout=60s'
-                    sh 'kubectl rollout status deployment/frontend -n healthcare --timeout=60s'
+                    sh 'kubectl rollout status deployment/alert-engine -n healthcare --timeout=120s'
+                    sh 'kubectl rollout status deployment/summarizer-service -n healthcare --timeout=120s'
+                    sh 'kubectl rollout status deployment/vitals-generator -n healthcare --timeout=120s'
+                    sh 'kubectl rollout status deployment/frontend -n healthcare --timeout=120s'
                     echo "All deployments validated successfully."
                 }
             }
