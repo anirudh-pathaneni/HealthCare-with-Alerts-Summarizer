@@ -10,6 +10,42 @@ function SummaryCard({ summary, modelInfo, onGenerateSummary, isGenerating, aler
         })
     }
 
+    // Parse summary text into sections
+    const parseSummary = (text) => {
+        if (!text) return { title: '', aiAnalysis: '', alerts: [] }
+
+        const lines = text.split('\n').filter(l => l.trim())
+        let title = ''
+        let aiAnalysis = ''
+        let criticalAlerts = []
+        let warningAlerts = []
+        let currentSection = ''
+
+        for (const line of lines) {
+            if (line.includes('**Clinical Summary for')) {
+                title = line.replace(/\*\*/g, '')
+            } else if (line.includes('**AI Analysis')) {
+                currentSection = 'ai'
+            } else if (line.includes('🔴 CRITICAL')) {
+                currentSection = 'critical'
+            } else if (line.includes('🟡 WARNING')) {
+                currentSection = 'warning'
+            } else if (line.includes('**Active Alerts')) {
+                // Skip header
+            } else if (currentSection === 'ai' && !line.includes('**')) {
+                aiAnalysis = line.trim()
+            } else if (currentSection === 'critical' && line.trim().startsWith('•')) {
+                criticalAlerts.push(line.replace('•', '').trim())
+            } else if (currentSection === 'warning' && line.trim().startsWith('•')) {
+                warningAlerts.push(line.replace('•', '').trim())
+            }
+        }
+
+        return { title, aiAnalysis, criticalAlerts, warningAlerts }
+    }
+
+    const parsed = summary?.text ? parseSummary(summary.text) : null
+
     return (
         <div className="summary-card glass-card">
             <div className="summary-header">
@@ -26,8 +62,57 @@ function SummaryCard({ summary, modelInfo, onGenerateSummary, isGenerating, aler
             </div>
 
             <div className="summary-content">
-                {summary ? (
-                    <p className={`summary-text ${summary.error ? 'error' : ''}`}>{summary.text}</p>
+                {summary && parsed ? (
+                    <div className="summary-sections">
+                        {parsed.title && (
+                            <div className="summary-patient-title">{parsed.title}</div>
+                        )}
+
+                        {parsed.aiAnalysis && (
+                            <div className="summary-section ai-section">
+                                <div className="section-header">
+                                    <span className="section-icon">🤖</span>
+                                    <span className="section-title">AI Analysis (Flan-T5)</span>
+                                </div>
+                                <p className="section-content">{parsed.aiAnalysis}</p>
+                            </div>
+                        )}
+
+                        {(parsed.criticalAlerts?.length > 0 || parsed.warningAlerts?.length > 0) && (
+                            <div className="summary-section alerts-section">
+                                <div className="section-header">
+                                    <span className="section-icon">⚠️</span>
+                                    <span className="section-title">Active Alerts</span>
+                                </div>
+
+                                {parsed.criticalAlerts?.length > 0 && (
+                                    <div className="alert-group critical">
+                                        <div className="alert-group-header">🔴 Critical</div>
+                                        <ul className="alert-list">
+                                            {parsed.criticalAlerts.map((alert, i) => (
+                                                <li key={i} className="alert-item critical">{alert}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+
+                                {parsed.warningAlerts?.length > 0 && (
+                                    <div className="alert-group warning">
+                                        <div className="alert-group-header">🟡 Warning</div>
+                                        <ul className="alert-list">
+                                            {parsed.warningAlerts.map((alert, i) => (
+                                                <li key={i} className="alert-item warning">{alert}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {summary.error && (
+                            <p className="summary-text error">{summary.text}</p>
+                        )}
+                    </div>
                 ) : (
                     <div className="no-summary">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

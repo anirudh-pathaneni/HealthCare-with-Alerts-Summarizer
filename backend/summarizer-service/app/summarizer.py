@@ -124,15 +124,27 @@ def format_alerts_section(alerts: List[Dict]) -> str:
     critical = [a for a in alerts if a.get("severity") == "critical"]
     warning = [a for a in alerts if a.get("severity") == "warning"]
 
+    def get_alert_label(alert):
+        """Get human-readable alert label from alert_type or vital_type."""
+        alert_type = alert.get('alert_type') or alert.get('vital_type') or alert.get('type')
+        if alert_type:
+            # Convert snake_case to Title Case
+            return alert_type.replace('_', ' ').title()
+        return 'Alert'
+
     if critical:
         parts.append("\n🔴 CRITICAL:")
-        for alert in critical[:3]:
-            parts.append(f"  • {alert.get('type', 'Unknown')}: {alert.get('message', 'No details')}")
+        for alert in critical[:5]:
+            label = get_alert_label(alert)
+            message = alert.get('message', 'No details')
+            parts.append(f"  • {label}: {message}")
 
     if warning:
         parts.append("\n🟡 WARNING:")
-        for alert in warning[:3]:
-            parts.append(f"  • {alert.get('type', 'Unknown')}: {alert.get('message', 'No details')}")
+        for alert in warning[:5]:
+            label = get_alert_label(alert)
+            message = alert.get('message', 'No details')
+            parts.append(f"  • {label}: {message}")
 
     return "\n".join(parts)
 
