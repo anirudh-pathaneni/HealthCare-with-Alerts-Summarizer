@@ -107,9 +107,7 @@ const Login = () => {
                     </button>
                 </form>
 
-                <div className="login-footer">
-                    <p>Default: <strong>admin</strong> / <strong>admin123</strong></p>
-                </div>
+                {/* Footer removed for production */}
             </div>
         </div>
     );
