@@ -1,0 +1,440 @@
+================================================================================
+KUBERNETES INFRASTRUCTURE EXPLAINED
+How Each Component Meets Project Guidelines
+================================================================================
+
+This document explains the infrastructure/kubernetes/ directory structure and
+how each component addresses the SPE Final Project Evaluation Criteria.
+
+================================================================================
+PROJECT GUIDELINES RECAP (From FinalProjectGuidelinesAndEvaluationCriteria.pdf)
+================================================================================
+
+EVALUATION CRITERIA:
+1. Working Project (20 Marks):
+   - Fully functional and deployable project
+   - Incremental updates trigger automated deployment
+   - New changes visible upon refreshing
+
+2. Advanced Features (3 Marks):
+   - Vault for secure credential storage
+   - Roles in Ansible Playbooks
+   - Kubernetes HPA for dynamic scalability
+
+3. Innovation (2 Marks):
+   - Creative or innovative solutions
+
+4. Domain-Specific (5 Marks):
+   - Projects targeting specific domains (AIOps, Healthcare, etc.)
+
+================================================================================
+DIRECTORY STRUCTURE
+================================================================================
+
+infrastructure/kubernetes/
+├── namespace.yaml              # Kubernetes namespace definition
+├── configmaps/
+│   └── healthcare-config.yaml  # Application configuration
+├── secrets/
+│   └── healthcare-secrets.yaml # Sensitive credentials
+├── deployments/
+│   ├── summarizer-service.yaml # AI summarization service
+│   ├── vitals-generator.yaml   # Patient vitals simulation
+│   ├── alert-engine.yaml       # Clinical alert detection
+│   ├── frontend.yaml           # React dashboard
+│   ├── elasticsearch.yaml      # Log storage (ELK Stack)
+│   ├── kibana.yaml             # Log visualization (ELK Stack)
+│   └── filebeat.yaml           # Log collection (DaemonSet)
+├── hpa/
+│   └── hpa.yaml                # Horizontal Pod Autoscaling (3 HPAs)
+└── ingress/
+    └── ingress.yaml            # External traffic routing
+
+================================================================================
+FILE-BY-FILE EXPLANATION
+================================================================================
+
+--------------------------------------------------------------------------------
+1. namespace.yaml
+--------------------------------------------------------------------------------
+
+PURPOSE: Creates an isolated namespace for all healthcare resources
+
+CONTENT:
+  apiVersion: v1
+  kind: Namespace
+  metadata:
+    name: healthcare
+    labels:
+      app.kubernetes.io/name: healthcare-aiops
+
+WHY IT MATTERS:
+  - Isolates healthcare resources from other applications
+  - Enables namespace-level resource quotas and policies
+  - All other resources reference "namespace: healthcare"
+
+GUIDELINE ADDRESSED: Working Project
+  - Provides organized, deployable infrastructure
+
+--------------------------------------------------------------------------------
+2. configmaps/healthcare-config.yaml
+--------------------------------------------------------------------------------
+
+PURPOSE: Stores non-sensitive application configuration
+
+CONTENT:
+  - ELASTICSEARCH_URL: "http://elasticsearch:9200"
+  - MODEL_NAME: "sshleifer/distilbart-cnn-12-6"
+  - MODEL_VERSION: "1.0.0"
+  - VITALS_INTERVAL_MS: "1000"
+  - SUMMARY_INTERVAL_SECONDS: "60"
+  - CORS_ORIGINS: "http://localhost:3000,https://healthcare.example.com"
+
+WHY IT MATTERS:
+  - Separates configuration from container images
+  - Can be updated without rebuilding Docker images
+  - Referenced by deployments via configMapKeyRef
+
+GUIDELINE ADDRESSED: Working Project
+  - Demonstrates configuration management best practices
+
+--------------------------------------------------------------------------------
+3. secrets/healthcare-secrets.yaml
+--------------------------------------------------------------------------------
+
+PURPOSE: Stores sensitive credentials securely
+
+CONTENT:
+  - ELASTICSEARCH_PASSWORD: (empty if security disabled)
+  - MONGODB_URI: MongoDB Atlas connection string
+  - JWT_SECRET: Authentication secret key
+
+WHY IT MATTERS:
+  - Keeps secrets out of source code and container images
+  - Kubernetes encrypts secrets at rest
+  - Referenced by deployments via secretKeyRef
+  - Can be integrated with Vault for enhanced security
+
+GUIDELINE ADDRESSED: Advanced Features (Vault placeholder)
+  - Shows secure credential storage pattern
+  - Ready for Vault integration via Ansible vault role
+
+--------------------------------------------------------------------------------
+4. deployments/summarizer-service.yaml
+--------------------------------------------------------------------------------
+
+PURPOSE: Deploys the AI-powered medical summarization service
+
+KEY FEATURES:
+  a) Deployment Configuration:
+     - Image: docker.io/5unnysunny/summarizer-service:latest
+     - Port: 8003
+     - Replicas: 1 (managed by HPA)
+
+  b) Rolling Update Strategy:
+     strategy:
+       type: RollingUpdate
+       rollingUpdate:
+         maxSurge: 1        # Can add 1 extra pod during update
+         maxUnavailable: 0  # Never remove existing pod until new is ready
+
+  c) Resource Limits:
+     resources:
+       requests:
+         cpu: "500m"      # Guaranteed 0.5 CPU cores
+         memory: "2Gi"    # Guaranteed 2GB RAM for ML model
+       limits:
+         cpu: "2"         # Max 2 CPU cores
+         memory: "4Gi"    # Max 4GB RAM
+
+  d) Health Probes:
+     livenessProbe:
+       httpGet:
+         path: /health
+         port: 8003
+       initialDelaySeconds: 120  # Wait for model to load
+       periodSeconds: 30
+
+     readinessProbe:
+       httpGet:
+         path: /health
+         port: 8003
+       initialDelaySeconds: 60
+       periodSeconds: 10
+
+  e) Environment Variables:
+     - ELASTICSEARCH_URL from ConfigMap
+     - ELASTICSEARCH_PASSWORD from Secret
+     - MODEL_NAME from ConfigMap
+
+  f) ClusterIP Service:
+     - Internal DNS name: summarizer-service
+     - Port: 8003
+
+GUIDELINE ADDRESSED: Working Project + Innovation
+  - Demonstrates zero-downtime rolling updates
+  - Shows production-ready health monitoring
+  - Domain-specific: AI/ML model serving for healthcare
+
+--------------------------------------------------------------------------------
+5. deployments/vitals-generator.yaml
+--------------------------------------------------------------------------------
+
+PURPOSE: Generates simulated patient vital signs
+
+KEY FEATURES:
+  - Image: docker.io/5unnysunny/vitals-generator:latest
+  - Port: 8001
+  - Writes vitals to Elasticsearch
+  - Health probes on /health endpoint
+  - ClusterIP service for internal access
+
+GUIDELINE ADDRESSED: Domain-Specific (Healthcare)
+  - Simulates real patient monitoring devices
+  - Generates Heart Rate, SpO2, Temperature, BP, Respiratory Rate
+
+--------------------------------------------------------------------------------
+6. deployments/alert-engine.yaml
+--------------------------------------------------------------------------------
+
+PURPOSE: Detects clinical anomalies and generates alerts
+
+KEY FEATURES:
+  - Image: docker.io/5unnysunny/alert-engine:latest
+  - Port: 8002 (or 8004 based on config)
+  - Reads vitals from Elasticsearch
+  - Generates alerts for abnormal values
+  - Health probes on /health endpoint
+
+GUIDELINE ADDRESSED: Domain-Specific (Healthcare)
+  - Clinical threshold monitoring
+  - Real-time anomaly detection
+
+--------------------------------------------------------------------------------
+7. deployments/frontend.yaml
+--------------------------------------------------------------------------------
+
+PURPOSE: Serves the React patient monitoring dashboard
+
+KEY FEATURES:
+  - Image: docker.io/5unnysunny/frontend:latest
+  - Port: 80 (Nginx serving static files)
+  - ClusterIP service for Ingress routing
+
+GUIDELINE ADDRESSED: Working Project
+  - User-facing dashboard for visualization
+  - "Upon refreshing, new changes should be visible"
+
+--------------------------------------------------------------------------------
+8. deployments/elasticsearch.yaml
+--------------------------------------------------------------------------------
+
+PURPOSE: Stores all logs and medical data for the ELK Stack
+
+KEY FEATURES:
+  - Image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+  - Port: 9200
+  - Single-node mode for development
+  - Security disabled (xpack.security.enabled: false)
+  - Resource limits: 512MB-1GB heap, 1-2GB total memory
+
+WHY IT MATTERS:
+  - Central data store for medical vitals and alerts
+  - Source data for AI summarization
+  - Target for log aggregation
+
+GUIDELINE ADDRESSED: ELK Stack requirement
+  - "Application logs must feed into the ELK Stack"
+
+--------------------------------------------------------------------------------
+9. deployments/kibana.yaml
+--------------------------------------------------------------------------------
+
+PURPOSE: Provides visualization dashboard for Elasticsearch data
+
+KEY FEATURES:
+  - Image: docker.elastic.co/kibana/kibana:8.11.0
+  - Port: 5601
+  - Connects to Elasticsearch service
+
+GUIDELINE ADDRESSED: ELK Stack requirement
+  - "Kibana dashboard should visualize these logs"
+  - "Providing insights into application activities"
+
+--------------------------------------------------------------------------------
+10. deployments/filebeat.yaml (IMPORTANT - DaemonSet)
+--------------------------------------------------------------------------------
+
+PURPOSE: Collects container logs from all Kubernetes nodes
+
+KEY FEATURES:
+  a) ConfigMap (filebeat-config):
+     - Collects all container logs from /var/log/containers/*.log
+     - Adds Kubernetes metadata (pod name, namespace, labels)
+     - Drops logs from kube-system and ingress-nginx namespaces
+     - Outputs to Elasticsearch index: application-logs-YYYY.MM.DD
+
+  b) RBAC (ServiceAccount, ClusterRole, ClusterRoleBinding):
+     - ServiceAccount: filebeat
+     - ClusterRole: permissions to get/watch/list namespaces, pods, nodes
+     - ClusterRoleBinding: connects ServiceAccount to ClusterRole
+
+  c) DaemonSet:
+     - Runs one pod on EVERY Kubernetes node
+     - Image: docker.elastic.co/beats/filebeat:8.11.0
+     - Mounts:
+       - /var/lib/docker/containers (container logs)
+       - /var/log (system logs)
+       - filebeat config from ConfigMap
+
+WHY DAEMONSET:
+  - Ensures log collection on every node
+  - Automatically scales with cluster size
+  - No logs are missed regardless of which node runs pods
+
+GUIDELINE ADDRESSED: ELK Stack + Advanced Feature
+  - Comprehensive log collection
+  - Demonstrates advanced Kubernetes patterns (DaemonSet, RBAC)
+
+--------------------------------------------------------------------------------
+11. hpa/hpa.yaml (CRITICAL FOR ADVANCED FEATURES)
+--------------------------------------------------------------------------------
+
+PURPOSE: Horizontal Pod Autoscaling for dynamic scalability
+
+CONTAINS THREE HPAs:
+
+a) summarizer-service-hpa:
+   apiVersion: autoscaling/v2
+   spec:
+     scaleTargetRef:
+       name: summarizer-service
+     minReplicas: 1
+     maxReplicas: 10
+     metrics:
+       - type: Resource
+         resource:
+           name: cpu
+           target:
+             averageUtilization: 70
+       - type: Resource
+         resource:
+           name: memory
+           target:
+             averageUtilization: 80
+     behavior:
+       scaleUp:
+         stabilizationWindowSeconds: 60      # Wait 1 min before scaling up
+         policies:
+           - type: Pods
+             value: 2                         # Add max 2 pods at a time
+             periodSeconds: 60
+       scaleDown:
+         stabilizationWindowSeconds: 300     # Wait 5 min before scaling down
+         policies:
+           - type: Pods
+             value: 1                         # Remove 1 pod at a time
+             periodSeconds: 120
+
+b) vitals-generator-hpa:
+   - Min: 2, Max: 5 replicas
+   - Scale on CPU 70%
+
+c) alert-engine-hpa:
+   - Min: 2, Max: 5 replicas
+   - Scale on CPU 70%
+
+WHY SOPHISTICATED BEHAVIOR:
+  - scaleUp stabilization (60s): Prevents premature scaling on brief spikes
+  - scaleDown stabilization (300s): Prevents thrashing, allows traffic to settle
+  - Pod limits: Gradual scaling prevents overwhelming the cluster
+
+GUIDELINE ADDRESSED: Advanced Features (3 Marks)
+  - "Kubernetes HPA for dynamic scalability"
+  - Uses autoscaling/v2 API with behavior policies
+  - Multiple metrics (CPU and memory) for summarizer
+
+--------------------------------------------------------------------------------
+12. ingress/ingress.yaml
+--------------------------------------------------------------------------------
+
+PURPOSE: Routes external HTTP traffic to internal services
+
+KEY FEATURES:
+  a) Annotations:
+     - kubernetes.io/ingress.class: nginx
+     - nginx.ingress.kubernetes.io/websocket-services: "vitals-generator"
+     - Timeout settings for long-running requests
+
+  b) Routing Rules (host: healthcare.example.com):
+     PATH                    → SERVICE              PORT
+     /                       → frontend             80
+     /api/vitals            → vitals-generator     8001
+     /api/patients          → vitals-generator     8001
+     /api/auth              → vitals-generator     8001
+     /ws                    → vitals-generator     8001
+     /api/alerts            → alert-engine         8002
+     /api/summaries         → summarizer-service   8003
+     /api/model             → summarizer-service   8003
+
+WHY IT MATTERS:
+  - Single entry point for all services
+  - Path-based routing without exposing multiple ports
+  - WebSocket support for real-time vitals streaming
+
+GUIDELINE ADDRESSED: Working Project
+  - Clean external access to application
+  - "Upon refreshing, new changes should be visible"
+
+================================================================================
+SUMMARY: HOW KUBERNETES MEETS PROJECT GUIDELINES
+================================================================================
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ REQUIREMENT                        │ KUBERNETES COMPONENT                  │
+├────────────────────────────────────┼───────────────────────────────────────┤
+│ Working Project (20 pts)           │                                       │
+│   - Fully deployable               │ All 7 deployment files               │
+│   - Automated deployment           │ Namespace, ConfigMaps, Secrets       │
+│   - Changes visible on refresh     │ Rolling update strategy              │
+│   - Docker images deployed         │ Image references in deployments      │
+├────────────────────────────────────┼───────────────────────────────────────┤
+│ ELK Stack Requirement              │                                       │
+│   - Logs feed into ELK             │ Filebeat DaemonSet                   │
+│   - Elasticsearch storage          │ elasticsearch.yaml                    │
+│   - Kibana visualization           │ kibana.yaml                          │
+├────────────────────────────────────┼───────────────────────────────────────┤
+│ Advanced Features (3 pts)          │                                       │
+│   - Secure credential storage      │ healthcare-secrets.yaml              │
+│   - HPA for scalability            │ hpa/hpa.yaml (3 HPAs)                │
+│   - Production-grade patterns      │ Rolling updates, health probes       │
+├────────────────────────────────────┼───────────────────────────────────────┤
+│ Domain-Specific (5 pts)            │                                       │
+│   - Healthcare monitoring          │ vitals-generator deployment          │
+│   - Clinical alerting              │ alert-engine deployment              │
+│   - AI summarization               │ summarizer-service deployment        │
+└────────────────────────────────────┴───────────────────────────────────────┘
+
+================================================================================
+COMMANDS TO DEPLOY
+================================================================================
+
+# Apply all manifests
+kubectl apply -f infrastructure/kubernetes/namespace.yaml
+kubectl apply -f infrastructure/kubernetes/configmaps/
+kubectl apply -f infrastructure/kubernetes/secrets/
+kubectl apply -f infrastructure/kubernetes/deployments/
+kubectl apply -f infrastructure/kubernetes/hpa/
+kubectl apply -f infrastructure/kubernetes/ingress/
+
+# Verify deployments
+kubectl get deployments -n healthcare
+kubectl get services -n healthcare
+kubectl get hpa -n healthcare
+kubectl get ingress -n healthcare
+
+# Check pod status
+kubectl get pods -n healthcare -o wide
+
+# View HPA scaling activity
+kubectl get hpa -n healthcare -w

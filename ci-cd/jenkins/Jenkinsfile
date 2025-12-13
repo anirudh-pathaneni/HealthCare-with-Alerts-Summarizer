@@ -210,5 +210,15 @@ pipeline {
             echo 'Pipeline finished.'
             cleanWs()
         }
+        success {
+            mail to: 'pathaneni.anirudh@iiitb.ac.in',
+                 subject: "SUCCESS: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}",
+                 body: "Pipeline finished successfully. Details: ${env.BUILD_URL}"
+        }
+        failure {
+            mail to: 'pathaneni.anirudh@iiitb.ac.in',
+                 subject: "FAILURE: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER}",
+                 body: "Pipeline failed. Details: ${env.BUILD_URL}"
+        }
     }
 }

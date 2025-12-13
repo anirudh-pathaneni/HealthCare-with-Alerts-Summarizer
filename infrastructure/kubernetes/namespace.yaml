@@ -4,4 +4,3 @@ metadata:
   name: healthcare
   labels:
     app.kubernetes.io/name: healthcare-aiops
-    app.kubernetes.io/part-of: healthcare-monitoring

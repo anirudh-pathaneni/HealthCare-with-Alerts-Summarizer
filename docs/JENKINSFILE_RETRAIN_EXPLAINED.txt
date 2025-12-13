@@ -1,0 +1,298 @@
+================================================================================
+JENKINSFILE.RETRAIN - LINE BY LINE EXPLANATION
+MLOps Pipeline for Model Retraining and Deployment
+================================================================================
+
+LINE 1: pipeline {
+    - Declares a Jenkins Declarative Pipeline
+    - All pipeline configuration must be inside this block
+
+LINE 2: agent any
+    - Specifies that this pipeline can run on any available Jenkins agent
+    - The agent is the machine/container that executes the pipeline steps
+
+--------------------------------------------------------------------------------
+ENVIRONMENT VARIABLES (Lines 4-11)
+--------------------------------------------------------------------------------
+
+LINE 4: environment {
+    - Defines environment variables available to all stages
+
+LINE 5: DOCKER_REGISTRY = 'docker.io'
+    - Docker Hub registry URL for pushing/pulling images
+
+LINE 6: DOCKER_REPO = '5unnysunny'
+    - Docker Hub username/repository where images are stored
+
+LINE 7: KUBE_NAMESPACE = 'healthcare'
+    - Kubernetes namespace where the application is deployed
+    - All kubectl commands will target this namespace
+
+LINE 8: MODEL_NAME = '5unnySunny/medical-flan-t5-small-log-summarizer'
+    - HuggingFace Hub model identifier
+    - This is the custom fine-tuned Flan-T5 model for medical summarization
+
+LINE 9: ES_HOST = 'http://elasticsearch:9200'
+    - Elasticsearch service URL within Kubernetes cluster
+    - Used for storing/retrieving medical vitals data
+
+LINE 10: TRAIN_SAMPLES = '1000'
+    - Number of synthetic training samples to generate
+    - Controls the size of the training dataset
+
+--------------------------------------------------------------------------------
+TRIGGERS (Lines 13-17)
+--------------------------------------------------------------------------------
+
+LINE 13: triggers {
+    - Defines automatic pipeline triggers
+
+LINE 14-15: // cron('H 2 * * 0')
+    - COMMENTED OUT: Would run every Sunday at 2am (production schedule)
+    - 'H' means hash the minute to avoid all jobs running at exactly 2:00
+
+LINE 16: cron('H */6 * * *')
+    - ACTIVE: Runs every 6 hours (for testing purposes)
+    - 'H */6 * * *' = at some minute, every 6th hour, every day
+    - Can also be triggered manually from Jenkins UI
+
+--------------------------------------------------------------------------------
+OPTIONS (Lines 19-23)
+--------------------------------------------------------------------------------
+
+LINE 19: options {
+    - Pipeline-level configuration options
+
+LINE 20: buildDiscarder(logRotator(numToKeepStr: '5'))
+    - Only keep the last 5 build records
+    - Prevents disk space from filling up with old build logs
+
+LINE 21: timeout(time: 120, unit: 'MINUTES')
+    - Pipeline will automatically abort if it runs longer than 2 hours
+    - Prevents stuck pipelines from consuming resources indefinitely
+
+LINE 22: timestamps()
+    - Adds timestamps to console output
+    - Helps with debugging and tracking step duration
+
+--------------------------------------------------------------------------------
+STAGE 1: CHECKOUT (Lines 26-33)
+--------------------------------------------------------------------------------
+
+LINE 26: stage('Checkout') {
+    - First stage: Get the source code
+
+LINE 28: checkout scm
+    - Checks out source code from the SCM (Source Control Management)
+    - Uses the repository configured in Jenkins job settings
+
+LINE 29-31: script { env.MODEL_VERSION = sh(...).trim() }
+    - Creates a unique version string for this model training run
+    - Format: YYYYMMDDHHMMSS (e.g., 20231212072736)
+    - 'sh(returnStdout: true, ...)' captures command output as string
+    - .trim() removes trailing newline
+
+--------------------------------------------------------------------------------
+STAGE 2: COLLECT TRAINING DATA (Lines 35-61)
+--------------------------------------------------------------------------------
+
+LINE 35: stage('Collect Training Data') {
+    - Second stage: Query Elasticsearch for recent patient vitals
+
+LINE 40: mkdir -p training_data
+    - Creates training_data directory if it doesn't exist
+    - '-p' flag prevents error if directory already exists
+
+LINE 43: kubectl port-forward service/elasticsearch 9200:9200 -n ${KUBE_NAMESPACE} &
+    - Creates a tunnel from Jenkins agent to Elasticsearch inside Kubernetes
+    - Maps local port 9200 to Elasticsearch service port 9200
+    - '&' runs it in background so script continues
+
+LINE 44: PF_PID=\$!
+    - Captures the process ID of the port-forward command
+    - \$! is the PID of the last background process
+    - Backslash escapes $ because this is inside Groovy string
+
+LINE 45: sleep 3
+    - Waits 3 seconds for port-forward to establish connection
+
+LINE 47-51: curl -s 'http://localhost:9200/medical-vitals-*/_search?size=5000' ...
+    - Queries Elasticsearch for medical vitals data
+    - 'medical-vitals-*' matches all medical vitals indices
+    - '?size=5000' returns up to 5000 documents
+    - Query filter: {"range": {"@timestamp": {"gte": "now-7d"}}}
+      - Only gets records from the last 7 days
+    - '-s' = silent mode (no progress bar)
+    - Output saved to training_data/vitals.json
+    - '|| echo {...}' provides fallback empty JSON if curl fails
+
+LINE 54: kill \$PF_PID 2>/dev/null || true
+    - Terminates the port-forward process
+    - '2>/dev/null' suppresses error messages
+    - '|| true' ensures command doesn't fail if process already gone
+
+LINE 57: echo "Collected vitals: \$(cat training_data/vitals.json | python3 -c '...')..."
+    - Displays count of collected records
+    - Python one-liner parses JSON and counts hits array length
+
+--------------------------------------------------------------------------------
+STAGE 3: PREPARE DATASET (Lines 63-79)
+--------------------------------------------------------------------------------
+
+LINE 63: stage('Prepare Dataset') {
+    - Third stage: Convert raw vitals into training format
+
+LINE 65: dir('backend/summarizer-service') {
+    - Changes working directory to summarizer-service
+    - All commands in this block run from that directory
+
+LINE 67: pip3 install -r requirements.txt -q
+    - Installs Python dependencies
+    - '-q' = quiet mode (less output)
+
+LINE 70-71: mkdir -p training_data && cp ../../training_data/vitals.json training_data/
+    - Copies collected vitals.json into service's training_data folder
+    - '|| true' prevents failure if file doesn't exist
+
+LINE 74: export MAX_TRAINING_SAMPLES="${TRAIN_SAMPLES}"
+    - Sets environment variable for Python script
+    - Uses TRAIN_SAMPLES value (1000) from pipeline environment
+
+LINE 75: python3 prepare_dataset.py || true
+    - Runs the dataset preparation script
+    - Converts raw Elasticsearch data to model training format
+    - '|| true' allows pipeline to continue even if preparation fails
+
+--------------------------------------------------------------------------------
+STAGE 4: FINE-TUNE MODEL (Lines 81-97)
+--------------------------------------------------------------------------------
+
+LINE 81: stage('Fine-tune Model') {
+    - Fourth stage: Train the Flan-T5 model on new data
+
+LINE 83: withCredentials([string(credentialsId: 'huggingface-token', variable: 'HF_TOKEN')]) {
+    - Securely injects HuggingFace API token from Jenkins credentials
+    - 'huggingface-token' is the credential ID in Jenkins
+    - Token available as HF_TOKEN environment variable
+
+LINE 86: pip3 install -r requirements.txt datasets accelerate huggingface_hub -q
+    - Installs ML training dependencies:
+      - datasets: HuggingFace datasets library
+      - accelerate: Distributed training support
+      - huggingface_hub: For pushing model to HuggingFace
+
+LINE 88-90: export MODEL_NAME=... export NUM_EPOCHS=... export HF_TOKEN=...
+    - Sets environment variables for finetune.py:
+      - MODEL_NAME: Which model to fine-tune
+      - NUM_EPOCHS: Training iterations (3 epochs)
+      - HF_TOKEN: Authentication for HuggingFace Hub
+
+LINE 92: python3 finetune.py || echo "Fine-tuning skipped or failed"
+    - Runs the actual model training script
+    - Script trains model and pushes updated weights to HuggingFace Hub
+    - '|| echo ...' provides graceful failure message
+
+--------------------------------------------------------------------------------
+STAGE 5: RESTART SUMMARIZER SERVICE (Lines 99-114)
+--------------------------------------------------------------------------------
+
+LINE 99: stage('Restart Summarizer Service') {
+    - Fifth stage: Deploy the updated model to Kubernetes
+
+LINE 105: kubectl rollout restart deployment/summarizer-service -n ${KUBE_NAMESPACE} || true
+    - Triggers a rolling restart of summarizer-service pods
+    - New pods will download the updated model from HuggingFace Hub
+    - '|| true' ensures pipeline continues even if restart fails
+
+LINE 108-110: kubectl rollout status deployment/summarizer-service ...
+    - Waits for the rolling update to complete
+    - '--timeout=120s' waits up to 2 minutes
+    - '|| echo ...' handles timeout gracefully (ML models need memory to load)
+
+--------------------------------------------------------------------------------
+STAGE 6: VERIFY NEW MODEL (Lines 117-141)
+--------------------------------------------------------------------------------
+
+LINE 117: stage('Verify New Model') {
+    - Sixth stage: Health check the newly deployed model
+
+LINE 123: sleep 30
+    - Waits 30 seconds for new pods to fully initialize
+    - Model loading takes time due to transformer size
+
+LINE 126-127: kubectl port-forward service/summarizer-service 8003:8003 ...
+    - Creates tunnel to summarizer service on port 8003
+    - Captures process ID for later cleanup
+
+LINE 131-135: if curl -sf http://localhost:8003/health; then ... fi
+    - Performs health check on summarizer service
+    - '-s' = silent, '-f' = fail silently on HTTP errors
+    - Prints success (✅) or warning (⚠️) message
+
+LINE 137: kill \$PF_PID 2>/dev/null || true
+    - Cleans up port-forward process
+
+--------------------------------------------------------------------------------
+STAGE 7: LOG DEPLOYMENT (Lines 143-170)
+--------------------------------------------------------------------------------
+
+LINE 143: stage('Log Deployment') {
+    - Seventh stage: Record deployment event in Elasticsearch
+
+LINE 149-151: kubectl port-forward service/elasticsearch 9200:9200 ...
+    - Creates tunnel to Elasticsearch
+    - Same pattern as data collection stage
+
+LINE 153: INDEX_DATE=\$(date +%Y.%m.%d)
+    - Creates date string for index name (e.g., 2023.12.12)
+    - Elasticsearch index will be: system-deployment-2023.12.12
+
+LINE 154: TIMESTAMP=\$(date -Iseconds)
+    - Creates ISO 8601 timestamp for the document
+    - Example: 2023-12-12T07:27:36+03:00
+
+LINE 156-164: curl -X POST "http://localhost:9200/system-deployment-..."
+    - Posts a JSON document to Elasticsearch
+    - Document contains:
+      - @timestamp: When deployment happened
+      - event: "model_retrain" (event type)
+      - model_version: Unique version string from Stage 1
+      - status: "success"
+      - service: "summarizer-service"
+    - This creates an audit trail of all model updates
+
+--------------------------------------------------------------------------------
+POST SECTION (Lines 173-183)
+--------------------------------------------------------------------------------
+
+LINE 173: post {
+    - Defines actions to run after all stages complete
+
+LINE 174-176: success { echo "✅ Model retrained..." }
+    - Runs only if pipeline succeeds
+    - Prints success message with model version
+
+LINE 177-179: failure { echo '❌ Retraining pipeline failed!' }
+    - Runs only if pipeline fails at any stage
+    - Prints failure message
+
+LINE 180-182: always { cleanWs() }
+    - Runs regardless of success/failure
+    - cleanWs() cleans up the Jenkins workspace
+    - Removes all files to free disk space
+
+================================================================================
+SUMMARY: MLOps PIPELINE FLOW
+================================================================================
+
+1. CHECKOUT → Get source code, generate unique version ID
+2. COLLECT DATA → Query last 7 days of vitals from Elasticsearch
+3. PREPARE DATASET → Convert raw data to training format (1000 samples)
+4. FINE-TUNE → Train Flan-T5 model, push to HuggingFace Hub
+5. RESTART SERVICE → Rolling restart to load new model
+6. VERIFY → Health check the updated service
+7. LOG → Record deployment event in Elasticsearch
+
+TRIGGER: Every 6 hours automatically, or manual trigger
+TIMEOUT: 2 hours maximum
+RETENTION: Last 5 builds kept
