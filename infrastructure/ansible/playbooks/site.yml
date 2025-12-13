@@ -13,7 +13,6 @@
       when: ansible_os_family == "Debian"
 
 - import_playbook: elk.yml
-- import_playbook: vault.yml
 - import_playbook: jenkins.yml
 - import_playbook: kubernetes.yml
 - import_playbook: backend.yml
